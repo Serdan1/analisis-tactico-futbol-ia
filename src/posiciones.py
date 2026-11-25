@@ -113,8 +113,12 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
 
 
 def posiciones_de_un_jugador(todos: pd.DataFrame, diag: pd.DataFrame, track_id: int,
-                             equipo: str = "") -> pd.DataFrame:
-    """Formato de docs/formatos.md: una fila por fotograma; vacío si no se ve."""
+                             equipo: str = "", ataca_izquierda: bool = False) -> pd.DataFrame:
+    """Formato de docs/formatos.md: una fila por fotograma; vacío si no se ve.
+
+    ataca_izquierda=True gira el campo (x -> 105 - x, y -> 68 - y) para que el
+    equipo del jugador ataque siempre hacia x = 105, como pide el formato.
+    """
     j = todos[todos.track_id == track_id].set_index("frame")
     out = diag[["frame", "t_s"]].copy()
     out["track_id"] = track_id
@@ -122,7 +126,36 @@ def posiciones_de_un_jugador(todos: pd.DataFrame, diag: pd.DataFrame, track_id: 
     out["x_m"] = out.frame.map(j.x_m)
     out["y_m"] = out.frame.map(j.y_m)
     out["valido"] = out.frame.map(j.valido).fillna(0).astype(int)
+    if ataca_izquierda:
+        out["x_m"] = (LARGO_M - out.x_m).round(2)
+        out["y_m"] = (ANCHO_M - out.y_m).round(2)
     return out
+
+
+def posiciones_por_tramos(todos: pd.DataFrame, diag: pd.DataFrame, tramos, equipo: str = "",
+                          ataca_izquierda: bool = False) -> pd.DataFrame:
+    """Une varios track_id que en realidad son el mismo jugador (arreglo manual de un ID switch).
+
+    tramos: lista de (track_id, frame_inicio, frame_fin), ambos incluidos; None = sin límite.
+    Ejemplo en 2e57b9_0.mp4: el delantero blanco es el 7 hasta el fotograma 281 y el 21
+    desde el 288 (entre medias está tapado por el defensa y el tracker les cambia el número):
+        posiciones_por_tramos(todos, diag, [(7, None, 281), (21, 288, None)], ataca_izquierda=True)
+    """
+    partes = []
+    for tid, ini, fin in tramos:
+        t = todos[todos.track_id == tid]
+        if ini is not None:
+            t = t[t.frame >= ini]
+        if fin is not None:
+            t = t[t.frame <= fin]
+        partes.append(t)
+    union = pd.concat(partes).sort_values("frame")
+    if union.frame.duplicated().any():
+        raise ValueError("Los tramos se solapan: revisa los fotogramas de inicio y fin")
+    union = union.assign(track_id=tramos[0][0])
+    pos = posiciones_de_un_jugador(union, diag, tramos[0][0], equipo, ataca_izquierda)
+    pos["track_id"] = "+".join(str(t[0]) for t in tramos)
+    return pos
 
 
 # ---------------------------------------------------------------- vídeo de control
@@ -178,6 +211,8 @@ def main():
     ap.add_argument("--video", required=True, help="ruta RELATIVA al clip")
     ap.add_argument("--salida", required=True, help="carpeta de salida, p. ej. outputs/clip_01")
     ap.add_argument("--track_id", type=int, help="jugador para posiciones.csv (de momento a mano; el clic llega en #9)")
+    ap.add_argument("--ataca_izquierda", action="store_true",
+                    help="el equipo del jugador ataca hacia la portería de la izquierda de la cámara")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--imgsz", type=int, default=1280)
     ap.add_argument("--confianza_min", type=float, default=0.5)
@@ -200,7 +235,7 @@ def main():
           f"({diag.reutilizada.sum()} reutilizando la anterior). Error medio {diag.error_cm.median():.0f} cm (mediana).")
     print(f"Jugadores distintos (track_id): {todos.track_id.nunique()}")
     if a.track_id is not None:
-        pos = posiciones_de_un_jugador(todos, diag, a.track_id)
+        pos = posiciones_de_un_jugador(todos, diag, a.track_id, ataca_izquierda=a.ataca_izquierda)
         pos.to_csv(salida / "posiciones.csv", index=False)
         print(f"posiciones.csv del jugador {a.track_id}: {pos.valido.mean():.0%} de fotogramas válidos")
     print(f"Resultados en {salida}/")

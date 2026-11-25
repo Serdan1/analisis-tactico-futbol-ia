@@ -50,3 +50,24 @@ def test_reutiliza_la_ultima_h_y_luego_la_invalida():
     assert est.actualizar(kp, sin).reutilizada
     assert est.actualizar(kp, sin).reutilizada
     assert not est.actualizar(kp, sin).valida
+
+
+def test_girar_campo_si_ataca_a_la_izquierda():
+    import pandas as pd
+    from src.posiciones import posiciones_de_un_jugador
+    diag = pd.DataFrame({"frame": [0, 1], "t_s": [0.0, 0.04]})
+    todos = pd.DataFrame({"frame": [0, 1], "track_id": [7, 7], "x_m": [10.0, 20.0],
+                          "y_m": [5.0, 60.0], "valido": [1, 1]})
+    p = posiciones_de_un_jugador(todos, diag, 7, ataca_izquierda=True)
+    assert p.x_m.tolist() == [95.0, 85.0] and p.y_m.tolist() == [63.0, 8.0]
+
+
+def test_unir_tramos_de_un_id_switch():
+    import pandas as pd
+    from src.posiciones import posiciones_por_tramos
+    diag = pd.DataFrame({"frame": range(6), "t_s": [i * 0.04 for i in range(6)]})
+    todos = pd.DataFrame({"frame": [0, 1, 2, 0, 1, 2, 4, 5], "track_id": [7, 7, 7, 21, 21, 21, 21, 21],
+                          "x_m": [1, 2, 3, 50, 50, 50, 4, 5], "y_m": [0] * 8, "valido": [1] * 8})
+    p = posiciones_por_tramos(todos, diag, [(7, None, 2), (21, 4, None)])
+    assert p.x_m.tolist()[:3] == [1, 2, 3] and p.x_m.tolist()[4:] == [4, 5]
+    assert p.valido.tolist() == [1, 1, 1, 0, 1, 1] and p.track_id.iloc[0] == "7+21"
