@@ -30,3 +30,13 @@ def normalizar_numeros(texto):
 def verificar_cifras(texto, metricas, tolerancia=0.05):
     """Devuelve las cifras del informe que no aparecen en el JSON."""
     raise NotImplementedError
+
+
+def informe_completo(metricas: dict) -> tuple[str, list]:
+    """prompt -> LLM -> verificación. Devuelve (texto del informe, cifras no verificadas).
+
+    La llama main.py. Si el LLM no responde, que lance una excepción con un
+    mensaje claro: main.py guarda el prompt (para poder probarlo a mano) y
+    termina sin informe. Mientras lance NotImplementedError, se salta.
+    """
+    raise NotImplementedError

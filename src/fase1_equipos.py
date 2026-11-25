@@ -219,3 +219,52 @@ def equipo_de_un_jugador(out: pd.DataFrame, frames_y_tracks: pd.DataFrame) -> st
                                                      on=["frame", "track_id"])
     m = m[~m.equipo.isin(["", "arbitro", "otro"])]
     return m.equipo.mode().iloc[0] if len(m) else ""
+
+
+# --------------------------------------------------------------- todo junto (main.py)
+def brillo_torso(video, filas: pd.DataFrame) -> np.ndarray:
+    """Brillo medio (canal V de HSV) del torso de cada fila: sirve para llamar
+    "claro" al grupo de camiseta más clara y "oscuro" al otro."""
+    import cv2
+    cap = cv2.VideoCapture(str(video))
+    out = np.full(len(filas), np.nan)
+    actual, f = -1, None
+    for i in np.argsort(filas.frame.to_numpy(), kind="stable"):   # leer hacia delante: sin saltos lentos
+        r = filas.iloc[i]
+        while actual < r.frame:
+            ok, f = cap.read(); actual += 1
+            if not ok:
+                break
+        if f is None or actual != r.frame:
+            continue
+        h = int(r.y2) - int(r.y1)
+        zona = f[int(r.y1) + int(.15 * h):int(r.y1) + int(.55 * h), int(r.x1):int(r.x2)]
+        if zona.size:
+            out[i] = cv2.cvtColor(zona, cv2.COLOR_BGR2HSV)[..., 2].mean()
+    cap.release()
+    return out
+
+
+def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max: int | None = None,
+                        n_por_equipo: int = 20, metodo: str = "knn", partes: str = "ambos",
+                        ventana: int = 25):
+    """Versión sin revisión humana del notebook 10 (para main.py).
+
+    K-Means propone 20 recortes por grupo, se nombran por el brillo de la
+    camiseta, se entrena el clasificador (por defecto el mejor en validación
+    en 2e57b9_0: KNN k=5 con ResNet + color) y se asigna equipo a todo.
+    frame_max por defecto: el primer tercio del clip.
+    Devuelve (out, sentido, propuesta).
+    """
+    if frame_max is None:
+        frame_max = int(todos.frame.min() + (todos.frame.max() - todos.frame.min()) / 3) + 1
+    prop = proponer_etiquetas(todos, embs, n_por_equipo, frame_max=frame_max)
+    if prop.grupo.nunique() < 2:
+        raise ValueError("No se han encontrado dos equipos distintos en el clip")
+    brillo = pd.Series(brillo_torso(video, prop)).groupby(prop.grupo).mean()
+    nombres = {int(brillo.idxmax()): "claro", int(brillo.idxmin()): "oscuro"}
+    prop["equipo"] = prop.grupo.map(nombres)
+    kw = {"k": 5} if metodo == "knn" else {}
+    clf = ClasificadorEquipos(metodo, partes, **kw).fit(embs[prop.indice], prop.equipo)
+    out = asignar_equipos(todos, embs, clf, ventana=ventana)
+    return out, sentido_de_ataque(out), prop

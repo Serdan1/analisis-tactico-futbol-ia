@@ -41,3 +41,14 @@ def ocupacion_zonas(df):
 def exportar_metricas(metricas, ruta_json):
     """Guarda metricas.json con el formato acordado."""
     raise NotImplementedError
+
+
+def metricas_completas(ruta_csv, jugador: dict, clip: str = "") -> dict:
+    """Une todo lo anterior y devuelve el diccionario de metricas.json.
+
+    La llama main.py:  metricas = metricas_completas("outputs/<clip>/posiciones.csv",
+                                                     {"id": 7, "equipo": "claro", "rol": "delantero"},
+                                                     clip="2e57b9_0.mp4")
+    Mientras lance NotImplementedError, main.py se salta esta fase y lo avisa.
+    """
+    raise NotImplementedError

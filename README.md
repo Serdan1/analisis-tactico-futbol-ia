@@ -48,7 +48,7 @@ Reglas:
 ## Estructura
 
 ```
-├── main.py                  # ejecuta todo: python main.py --video data/clips/clip_01.mp4
+├── main.py                  # ejecuta todo: python main.py --video data/clips/2e57b9_0.mp4 --track_id 7
 ├── src/
 │   ├── fase1_tracking.py    # elegir al jugador y re-identificarlo (galería + τ) (Serdan1)
 │   ├── fase1_equipos.py     # separar equipos (K-Means + KNN / regresión logística) y sentido de ataque (Serdan1)
@@ -82,7 +82,25 @@ Instala primero PyTorch con CUDA siguiendo https://pytorch.org/get-started/local
 ## Uso
 
 ```bash
-python main.py --video data/clips/clip_01.mp4
+python main.py --video data/clips/2e57b9_0.mp4 --track_id 7    # seguir al jugador 7
+python main.py --video data/clips/2e57b9_0.mp4 --clic          # elegirlo con un clic en el vídeo
 ```
 
-Al arrancar se abre el primer fotograma: haz clic sobre el jugador que quieres analizar. Los resultados se guardan en `outputs/<nombre_del_clip>/`.
+Hace todo seguido y guarda cada paso en `outputs/<nombre_del_clip>/`:
+
+| Fase | Qué hace | Resultado |
+|---|---|---|
+| `video` | YOLO + ByteTrack + homografía (GPU, lo más lento) | `posiciones_todos.csv`, `homografia.csv` |
+| `huellas` | ResNet-18 + color de cada recorte | `embeddings.npy` |
+| `equipos` | K-Means + KNN, porteros y sentido de ataque | `equipos.csv`, `equipos.json` |
+| `jugador` | re-identificación del jugador elegido | `posiciones.csv` |
+| `metricas` | distancia, velocidad, sprints, zonas (Alex) | `metricas.json`, figuras |
+| `informe` | informe con el LLM y verificación (Pablo) | `informe.md` |
+
+Si ya existen los resultados de las primeras fases, se reutilizan (para probar otro jugador no hace falta volver a pasar YOLO). Opciones útiles:
+
+- `--desde video` repite todo; `--desde jugador` solo la re-identificación; `--hasta jugador` para antes de las métricas.
+- `--ataca_izquierda` / `--ataca_derecha` fuerza el sentido de ataque si no se ve ningún portero.
+- `--tau` umbral de re-identificación (0,80 por defecto, calibrado en el notebook 09).
+
+Al final se escribe `resumen.json` con lo más importante de la ejecución (homografía válida, equipo, % de fotogramas en que se ve al jugador, cambios de número detectados…).
