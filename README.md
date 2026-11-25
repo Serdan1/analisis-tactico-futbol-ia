@@ -52,6 +52,7 @@ Reglas:
 ├── src/
 │   ├── fase1_tracking.py    # detección, tracking, equipos, selección y re-ID   (Serdan1)
 │   ├── fase2_homografia.py  # keypoints del campo y píxeles → metros           (Serdan1)
+│   ├── posiciones.py        # vídeo → posiciones en metros de todos los jugadores (Serdan1)
 │   ├── fase2_metricas.py    # distancia, velocidad, sprints, zonas             (Alex)
 │   ├── visualizaciones.py   # mapa de calor, zonas, trayectoria                (Alex)
 │   ├── fase3_informe.py     # prompt, LLM y verificador de cifras              (Pablo)

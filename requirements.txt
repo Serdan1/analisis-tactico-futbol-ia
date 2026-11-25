@@ -21,5 +21,9 @@ mplsoccer
 # openai
 # ollama
 
+# Notebooks y pruebas
+ipykernel
+pytest
+
 # Demo (opcional)
 # gradio

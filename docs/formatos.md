@@ -6,7 +6,15 @@ Estos dos archivos conectan el trabajo de cada uno. **No se cambian sin avisar a
 
 Lo produce Serdan1 y lo usa Alex. Una fila por fotograma del jugador analizado.
 
-Posiciones en **metros** sobre un campo de **105 × 68**, con el origen (0, 0) en la esquina inferior izquierda de la imagen 2D del campo. El equipo analizado ataca hacia x = 105.
+Posiciones en **metros** sobre un campo de **105 × 68**:
+
+- **x** va de 0 a 105 a lo largo del campo, de izquierda a derecha tal como lo ve la cámara.
+- **y** va de 0 (banda del lado de la cámara) a 68 (banda lejana).
+- Es decir, el origen (0, 0) es la esquina izquierda del lado de la cámara, y el campo se dibuja visto desde arriba con la cámara abajo (como `mplsoccer` con `pitch_type="custom"`).
+
+Mientras no sepamos hacia qué portería ataca el equipo (tarea #10), las coordenadas son las de la cámara. Cuando lo sepamos, si ataca hacia la izquierda se gira el campo (`x → 105 − x`, `y → 68 − y`) para que siempre ataque hacia x = 105.
+
+La columna `equipo` queda vacía hasta la tarea #10.
 
 | Columna | Tipo | Significado |
 |---|---|---|
