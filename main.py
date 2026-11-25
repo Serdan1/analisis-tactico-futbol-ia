@@ -22,6 +22,7 @@ import argparse
 import json
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,9 @@ import pandas as pd
 FASES = ["video", "huellas", "equipos", "jugador", "metricas", "informe"]
 TAU_POR_DEFECTO = 0.80        # calibrado con FAR/FRR en 2e57b9_0 (notebook 09)
 PESOS_RESNET = Path("models/resnet18-f37072fd.pth")
+
+# supervision avisa de nombres que cambiarán en su v1.0: no es un fallo nuestro
+warnings.filterwarnings("ignore", category=FutureWarning, module="supervision")
 
 
 class ErrorPipeline(Exception):
