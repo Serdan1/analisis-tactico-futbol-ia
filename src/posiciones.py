@@ -22,8 +22,6 @@ import cv2
 import numpy as np
 import pandas as pd
 import supervision as sv
-from trackers import ByteTrackTracker
-from ultralytics import YOLO
 
 from src.fase2_homografia import (ANCHO_M, LARGO_M, VERTICES_CM, EstimadorHomografia,
                                   dentro_del_campo, pies_de_cajas, pixel_a_metros)
@@ -52,6 +50,8 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
     error_max_cm = 150.0
     if modo_demo:
         confianza_min, usar_ransac, error_max_cm = 0.0, False, float("inf")
+    from trackers import ByteTrackTracker   # aquí dentro: los tests no necesitan YOLO ni GPU
+    from ultralytics import YOLO
     modelo_jug = YOLO(MODELO_JUGADORES)
     modelo_campo = YOLO(MODELO_CAMPO)
     info = sv.VideoInfo.from_video_path(str(video))
