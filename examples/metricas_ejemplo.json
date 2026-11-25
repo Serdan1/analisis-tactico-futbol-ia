@@ -1,0 +1,22 @@
+{
+  "clip": "clip_ejemplo.mp4",
+  "jugador": { "id": 9, "equipo": "A", "rol": "delantero" },
+  "tiempo_visible_s": 252,
+  "frames_validos_pct": 87.4,
+  "distancia_m": 512,
+  "vel_media_kmh": 7.3,
+  "vel_max_kmh": 29.8,
+  "sprints": [
+    { "inicio_s": 41.2, "dur_s": 2.1, "vel_max_kmh": 29.8 },
+    { "inicio_s": 118.6, "dur_s": 1.4, "vel_max_kmh": 27.1 }
+  ],
+  "posicion_media_m": [83.1, 31.4],
+  "zonas_pct": {
+    "ultimo_tercio": 78,
+    "area_rival": 15,
+    "carril_central": 52,
+    "banda_izq": 27,
+    "banda_der": 21
+  },
+  "entradas_area": 3
+}

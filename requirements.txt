@@ -1,0 +1,25 @@
+# Instala PyTorch con CUDA antes que esto: https://pytorch.org/get-started/locally/
+torch
+torchvision
+
+# Fase 1: detección, tracking y embeddings
+ultralytics
+supervision
+trackers
+opencv-python
+scikit-learn
+
+# Fase 2: métricas y gráficas
+numpy
+pandas
+scipy
+matplotlib
+mplsoccer
+
+# Fase 3: informe con LLM (elegir uno)
+# anthropic
+# openai
+# ollama
+
+# Demo (opcional)
+# gradio
