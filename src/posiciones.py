@@ -42,7 +42,8 @@ def puntos_campo(modelo_campo, frame, device):
 
 
 def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ransac=True,
-                   max_frames=None, paso=1, video_control=None, progreso=True, modo_demo=False):
+                   max_frames=None, paso=1, video_control=None, progreso=True, modo_demo=False,
+                   inicio=0):
     """Recorre el vídeo y devuelve dos DataFrames: posiciones de todos y diagnóstico de H.
 
     modo_demo=True reproduce la demo de Roboflow (todos los puntos, sin RANSAC
@@ -67,12 +68,13 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
         escritor = cv2.VideoWriter(str(video_control), cv2.VideoWriter_fourcc(*"mp4v"),
                                    fps / paso, (info.width, info.height))
 
-    frames = sv.get_video_frames_generator(str(video), stride=paso)
-    total = info.total_frames // paso if max_frames is None else min(max_frames, info.total_frames // paso)
+    frames = sv.get_video_frames_generator(str(video), stride=paso, start=inicio)
+    restantes = (info.total_frames - inicio) // paso
+    total = restantes if max_frames is None else min(max_frames, restantes)
     for i, frame in enumerate(frames):
         if max_frames is not None and i >= max_frames:
             break
-        n_frame = i * paso
+        n_frame = inicio + i * paso
         t_s = n_frame / fps
 
         # 1. Homografía del fotograma
@@ -95,8 +97,10 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
             xy_m = pixel_a_metros(pies_de_cajas(det.xyxy), res.H)
         validos = np.zeros(len(det), bool) if not res.valida else dentro_del_campo(xy_m)
         for k in range(len(det)):
+            x1, y1, x2, y2 = (int(round(float(c))) for c in det.xyxy[k])
             filas.append(dict(frame=n_frame, t_s=round(t_s, 3), track_id=int(det.tracker_id[k]),
                               clase=CLASES.get(int(det.class_id[k]), "?"),
+                              x1=x1, y1=y1, x2=x2, y2=y2,
                               x_m=round(float(xy_m[k, 0]), 2) if validos[k] else np.nan,
                               y_m=round(float(xy_m[k, 1]), 2) if validos[k] else np.nan,
                               valido=int(validos[k])))
@@ -221,6 +225,7 @@ def main():
                     help="como la demo de Roboflow: todos los puntos y sin RANSAC (para comparar)")
     ap.add_argument("--max_frames", type=int)
     ap.add_argument("--paso", type=int, default=1, help="procesar 1 de cada N fotogramas")
+    ap.add_argument("--inicio", type=int, default=0, help="primer fotograma a procesar")
     ap.add_argument("--video_control", action="store_true", help="guardar control.mp4")
     a = ap.parse_args()
 
@@ -228,7 +233,7 @@ def main():
     salida.mkdir(parents=True, exist_ok=True)
     todos, diag = procesar_video(a.video, a.device, a.imgsz, a.confianza_min, not a.sin_ransac,
                                  a.max_frames, a.paso, salida / "control.mp4" if a.video_control else None,
-                                 modo_demo=a.modo_demo)
+                                 modo_demo=a.modo_demo, inicio=a.inicio)
     todos.to_csv(salida / "posiciones_todos.csv", index=False)
     diag.to_csv(salida / "homografia.csv", index=False)
     print(f"\nH válida en {diag.valida.mean():.0%} de los fotogramas "

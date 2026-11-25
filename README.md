@@ -50,7 +50,7 @@ Reglas:
 ```
 ├── main.py                  # ejecuta todo: python main.py --video data/clips/clip_01.mp4
 ├── src/
-│   ├── fase1_tracking.py    # detección, tracking, equipos, selección y re-ID   (Serdan1)
+│   ├── fase1_tracking.py    # elegir al jugador y re-identificarlo (galería + τ) (Serdan1)
 │   ├── fase2_homografia.py  # keypoints del campo y píxeles → metros           (Serdan1)
 │   ├── posiciones.py        # vídeo → posiciones en metros de todos los jugadores (Serdan1)
 │   ├── fase2_metricas.py    # distancia, velocidad, sprints, zonas             (Alex)
