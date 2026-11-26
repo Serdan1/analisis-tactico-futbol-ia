@@ -9,7 +9,9 @@ pregunta por teclado (no se guarda en ningún sitio).
 """
 import argparse
 import getpass
+import os
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -22,8 +24,12 @@ def main():
     ap.add_argument("--split", default="test", choices=list(TAMANOS_GB),
                     help="test por defecto (challenge no trae las anotaciones)")
     ap.add_argument("--borrar_zip", action="store_true", help="borrar el .zip al terminar")
+    ap.add_argument("--sin_xet", action="store_true",
+                    help="descarga HTTP normal en vez del sistema por trozos de Hugging Face (si los cortes se repiten)")
     a = ap.parse_args()
 
+    if a.sin_xet:
+        os.environ["HF_HUB_DISABLE_XET"] = "1"      # tiene que ir antes de importar huggingface_hub
     from huggingface_hub import hf_hub_download
 
     DESTINO.mkdir(parents=True, exist_ok=True)
@@ -34,8 +40,20 @@ def main():
         return 1
 
     print(f"Descargando {a.split}.zip ({TAMANOS_GB[a.split]} GB). Si se corta, vuelve a ejecutarlo: continúa donde se quedó.")
-    zip_path = Path(hf_hub_download(repo_id="SoccerNet/SN-GSR-2025", repo_type="dataset",
-                                    filename=f"{a.split}.zip", local_dir=DESTINO))
+    for intento in range(1, 9):
+        try:
+            zip_path = Path(hf_hub_download(repo_id="SoccerNet/SN-GSR-2025", repo_type="dataset",
+                                            filename=f"{a.split}.zip", local_dir=DESTINO))
+            break
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:                       # cortes de red: se reintenta y sigue donde iba
+            espera = min(60, 10 * intento)
+            print(f"\n⚠ Corte en la descarga ({type(e).__name__}). Reintento {intento}/8 en {espera} s...", flush=True)
+            time.sleep(espera)
+    else:
+        print("✗ No se ha podido descargar tras 8 intentos. Prueba con --sin_xet o más tarde.")
+        return 1
 
     print(f"Descomprimiendo en {DESTINO} ...")
     with zipfile.ZipFile(zip_path) as z:
