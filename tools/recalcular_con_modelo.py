@@ -31,7 +31,7 @@ from src.fase1_equipos import equipos_automaticos  # noqa: E402
 from src.fase2_homografia import EstimadorHomografia, dentro_del_campo, pixel_a_metros  # noqa: E402
 
 COLUMNAS = ["error_mediana_m", "error_p95_m", "error_menos_1m_pct", "con_posicion_pct", "equipos_acierto_pct",
-            "reid_bien_pct", "reid_otro_pct", "tracker_bien_pct", "tracker_otro_pct"]
+            "reid_bien_pct", "reid_otro_pct", "tracker_bien_pct", "tracker_otro_pct", "reid_precision_pct"]
 
 
 def recalcular(base: Path, destino: Path, xy, conf, min_inliers):
@@ -70,10 +70,14 @@ def main():
     ap.add_argument("--min_inliers", type=int, default=4)
     ap.add_argument("--clips", nargs="*")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--margen_cambio", type=float, default=None, help="seguidor: margen para cambiar de número en un conflicto")
+    ap.add_argument("--max_hueco_s", type=float, default=None, help="seguidor (modo prudente): no recuperar tras más de N s perdido")
     a = ap.parse_args()
 
     nombre = Path(a.modelo).stem
-    salida = Path("outputs") / f"{nombre}_mi{a.min_inliers}"
+    seguir_kw = {k: v for k, v in [("margen_cambio", a.margen_cambio), ("max_hueco_s", a.max_hueco_s)] if v is not None}
+    sufijo = "".join(f"_{k}{v}" for k, v in seguir_kw.items())
+    salida = Path("outputs") / f"{nombre}_mi{a.min_inliers}{sufijo}"
     clips = a.clips or sorted(p.parent.name for p in Path("outputs").glob("SNGS-*/evaluacion_parejas.csv"))
     filas = []
     for k, clip in enumerate(clips, 1):
@@ -89,8 +93,11 @@ def main():
             json.dump({"sentido": sentido}, open(destino / "equipos.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"  ⚠ equipos: {e}")
-        r = evaluar_clip(destino, ORIGEN / clip / "Labels-GameState.json")
-        f = fila_resumen(clip, r); filas.append(f)
+        r = evaluar_clip(destino, ORIGEN / clip / "Labels-GameState.json", seguir_kw=seguir_kw)
+        f = fila_resumen(clip, r)
+        b, o = f.get("reid_bien_pct") or 0, f.get("reid_otro_pct") or 0
+        f["reid_precision_pct"] = round(100 * b / (b + o), 1) if b + o else None   # de las posiciones dadas, % del jugador correcto
+        filas.append(f)
         print(f"[{k}/{len(clips)}] {clip}: error {f['error_mediana_m']} m · equipos {f['equipos_acierto_pct']} % · "
               f"sentido {'ok' if f['sentido_ok'] else 'MAL'} · seguimiento re-ID {f['reid_bien_pct']} % "
               f"(otro {f['reid_otro_pct']} %) / tracker {f['tracker_bien_pct']} %", flush=True)
@@ -100,6 +107,7 @@ def main():
     comp = {"modelo nuevo": nuevo[COLUMNAS].mean()}
     if Path("outputs/soccernet_resultados.csv").exists():
         viejo = pd.read_csv("outputs/soccernet_resultados.csv")
+        viejo["reid_precision_pct"] = 100 * viejo.reid_bien_pct / (viejo.reid_bien_pct + viejo.reid_otro_pct)
         viejo = viejo[viejo["clip"].isin(nuevo["clip"])]
         comp = {"Roboflow": viejo[COLUMNAS].mean(), **comp}
     tabla = pd.DataFrame(comp).round(1)

@@ -127,7 +127,7 @@ def cambios_de_numero(m: pd.DataFrame) -> dict:
                 cambios_por_jugador=round(cambios / max(tracks, 1), 2))
 
 
-def evaluar_seguimiento(todos, embs, m, tau=0.80, min_frames=250, max_jugadores=None):
+def evaluar_seguimiento(todos, embs, m, tau=0.80, min_frames=250, max_jugadores=None, seguir_kw=None):
     """Elegir a cada jugador real en su primer fotograma y seguirlo durante el clip.
 
     Para cada fotograma en que el jugador real aparece: "bien" si la posición
@@ -146,7 +146,7 @@ def evaluar_seguimiento(todos, embs, m, tau=0.80, min_frames=250, max_jugadores=
     for gid, (f0, _) in candidatos.iterrows():
         tid = int(jug[(jug.gt_id == gid) & (jug.frame == f0)].track_id.iloc[0])
         sus = set(m[m.gt_id == gid].frame)
-        seg = seguir_jugador(todos, embs, tid, tau, frame_inicio=int(f0))
+        seg = seguir_jugador(todos, embs, tid, tau, frame_inicio=int(f0), **(seguir_kw or {}))
         solo = todos[todos.track_id == tid].set_index("frame").valido.astype(bool)
         for metodo, elegido in [("reid", dict(zip(seg.frame[seg.valido == 1], seg.track_id[seg.valido == 1]))),
                                 ("solo_tracker", {f: tid for f in solo.index[solo]})]:
@@ -193,7 +193,7 @@ def evaluar_equipos(m: pd.DataFrame, equipos: pd.DataFrame, sentido: dict, sx: i
 
 
 def evaluar_clip(carpeta_salida, ruta_json, tau=0.80, con_reid=True, max_jugadores=None,
-                 min_frames=250) -> dict:
+                 min_frames=250, seguir_kw=None) -> dict:
     carpeta_salida = Path(carpeta_salida)
     todos = pd.read_csv(carpeta_salida / "posiciones_todos.csv")
     verdad = cargar_verdad(ruta_json)
@@ -207,7 +207,7 @@ def evaluar_clip(carpeta_salida, ruta_json, tau=0.80, con_reid=True, max_jugador
     if con_reid and (carpeta_salida / "embeddings.npy").exists():
         embs = np.load(carpeta_salida / "embeddings.npy")
         res["seguimiento"], detalle = evaluar_seguimiento(todos, embs, m, tau, min_frames=min_frames,
-                                                             max_jugadores=max_jugadores)
+                                                             max_jugadores=max_jugadores, seguir_kw=seguir_kw)
         detalle.to_csv(carpeta_salida / "evaluacion_seguimiento.csv", index=False)
     m.to_csv(carpeta_salida / "evaluacion_parejas.csv", index=False)
     json.dump(res, open(carpeta_salida / "evaluacion.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
