@@ -3,7 +3,7 @@
     python tools/descargar_soccernet.py              # test (8,8 GB): el que usamos para evaluar
     python tools/descargar_soccernet.py --split valid
 
-Deja los clips en data/soccernet/SN-GSR-2025/<split>/ (data/ no se sube a GitHub).
+Deja los clips en data/soccernet/SN-GSR-2025/SNGS-XXX/ (data/ no se sube a GitHub).
 GSR no necesita la contraseña del NDA. Si algún zip la pidiera, el script la
 pregunta por teclado (no se guarda en ningún sitio).
 """
@@ -37,7 +37,7 @@ def main():
     zip_path = Path(hf_hub_download(repo_id="SoccerNet/SN-GSR-2025", repo_type="dataset",
                                     filename=f"{a.split}.zip", local_dir=DESTINO))
 
-    print(f"Descomprimiendo en {DESTINO / a.split} ...")
+    print(f"Descomprimiendo en {DESTINO} ...")
     with zipfile.ZipFile(zip_path) as z:
         protegido = any(i.flag_bits & 0x1 for i in z.infolist()[:20])
         pwd = getpass.getpass("Contraseña del zip (NDA): ").encode() if protegido else None
@@ -47,8 +47,8 @@ def main():
             if k % 5000 == 0:
                 print(f"  {k}/{len(nombres)} ficheros", flush=True)
 
-    clips = sorted({Path(n).parts[1] for n in nombres if len(Path(n).parts) > 2})
-    print(f"✓ {len(clips)} clips en {DESTINO / a.split}  (p. ej. {', '.join(clips[:3])})")
+    clips = sorted({p for n in nombres for p in Path(n).parts if p.startswith("SNGS-")})
+    print(f"✓ {len(clips)} clips en {DESTINO}  (p. ej. {', '.join(clips[:3])})")
     if a.borrar_zip:
         zip_path.unlink()
         print("  zip borrado")
