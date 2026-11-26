@@ -108,8 +108,9 @@ def suavizar_trayectoria(df):
 
         n = len(tramo)
 
-        # Ventana impar de hasta 11 fotogramas
-        ventana = min(11, n if n % 2 == 1 else n - 1)
+        # Ventana impar de hasta 25 fotogramas (1 segundo a 25 FPS)
+        ventana = min(25, n if n % 2 == 1 else n - 1)
+        
 
         if ventana >= 3:
             df.loc[tramo.index, "x_suave"] = savgol_filter(
