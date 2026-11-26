@@ -190,7 +190,7 @@ def asignar_porteros(out: pd.DataFrame) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------- 5. sentido de ataque
-def sentido_de_ataque(out: pd.DataFrame) -> dict:
+def sentido_de_ataque(out: pd.DataFrame, largo_m: float = LARGO_CAMPO) -> dict:
     """{equipo: {"ataca": "derecha"|"izquierda", "metodo": "portero"|"centro"}}.
 
     "derecha" = hacia x = 105 en las coordenadas de la cámara (docs/formatos.md).
@@ -201,7 +201,7 @@ def sentido_de_ataque(out: pd.DataFrame) -> dict:
     for e in equipos:
         pt = validos[validos.es_portero & (validos.equipo == e)]
         if len(pt):
-            defiende_izq = pt.x_m.median() < LARGO_CAMPO / 2
+            defiende_izq = pt.x_m.median() < largo_m / 2
             res[e] = {"ataca": "derecha" if defiende_izq else "izquierda", "metodo": "portero",
                       "x_portero": round(float(pt.x_m.median()), 1)}
     if len(res) == 1 and len(equipos) == 2:        # el otro equipo, al revés
@@ -279,7 +279,7 @@ def colores_de_grupos(video, filas: pd.DataFrame) -> dict:
 
 def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max: int | None = None,
                         n_por_equipo: int = 20, metodo: str = "knn", partes: str = "ambos",
-                        ventana: int = 25):
+                        ventana: int = 25, largo_m: float = LARGO_CAMPO):
     """Versión sin revisión humana del notebook 10 (para main.py).
 
     K-Means propone 20 recortes por grupo, se nombran por el color de la
@@ -297,4 +297,4 @@ def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max:
     kw = {"k": 5} if metodo == "knn" else {}
     clf = ClasificadorEquipos(metodo, partes, **kw).fit(embs[prop.indice], prop.equipo)
     out = asignar_equipos(todos, embs, clf, ventana=ventana)
-    return out, sentido_de_ataque(out), prop
+    return out, sentido_de_ataque(out, largo_m), prop

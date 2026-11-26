@@ -49,22 +49,46 @@ def necesita(ruta: Path, fase: str):
         raise ErrorPipeline(f"Falta {ruta}. Ejecuta desde la fase '{fase}' (--desde {fase}).")
 
 
+def medidas_del_campo(a, salida) -> tuple[float, float]:
+    """Medidas con las que se calcularon las posiciones (campo.json), o las de --campo si aún no hay.
+
+    Las fases posteriores a 'video' tienen que usar las mismas medidas que la homografía.
+    """
+    ruta = salida / "campo.json"
+    if ruta.exists():
+        c = json.load(open(ruta, encoding="utf-8"))
+        guardado = (c["largo_m"], c["ancho_m"])
+        if a.campo_medidas != guardado and a.campo is not None:
+            print(f"  ⚠ Las posiciones se calcularon con un campo de {guardado[0]:g} x {guardado[1]:g} m; "
+                  f"se ignora --campo {a.campo}. Para cambiarlo: --desde video")
+        return guardado
+    if a.campo is not None:   # resultados antiguos, de antes de existir --campo
+        print(f"  ⚠ Las posiciones guardadas se calcularon con 105 x 68 m; se ignora --campo {a.campo}. "
+              "Para cambiarlo: --desde video")
+    return 105.0, 68.0
+
+
 # --------------------------------------------------------------- fases
 def fase_video(a, salida):
     from src.posiciones import MODELO_CAMPO, procesar_video
     print(f"  Modelo de puntos del campo: {a.modelo_campo or MODELO_CAMPO}")
+    largo, ancho = a.campo_medidas
+    print(f"  Campo de {largo:g} x {ancho:g} m" + ("" if a.campo else " (por defecto; cámbialo con --campo LARGOxANCHO)"))
     todos, diag = procesar_video(a.video, device=a.device, progreso=not a.silencio,
-                                 modelo_campo=a.modelo_campo, min_inliers=a.min_inliers)
+                                 modelo_campo=a.modelo_campo, min_inliers=a.min_inliers,
+                                 largo_m=largo, ancho_m=ancho)
     if todos.empty:
         raise ErrorPipeline("No se ha detectado ningún jugador en el vídeo.")
     todos.to_csv(salida / "posiciones_todos.csv", index=False)
     diag.to_csv(salida / "homografia.csv", index=False)
+    json.dump({"largo_m": largo, "ancho_m": ancho}, open(salida / "campo.json", "w", encoding="utf-8"))
     pct_h = diag.valida.mean()
     print(f"  Homografía válida en el {pct_h:.0%} de los fotogramas · {todos.track_id.nunique()} tracks")
     if pct_h < 0.5:
         print("  ⚠ En más de la mitad del clip no se ven 4 puntos del campo fiables: "
               "las posiciones serán parciales (¿plano corto o repetición?).")
-    return dict(homografia_valida_pct=round(100 * pct_h, 1), tracks=int(todos.track_id.nunique()))
+    return dict(homografia_valida_pct=round(100 * pct_h, 1), tracks=int(todos.track_id.nunique()),
+                campo_m=[largo, ancho])
 
 
 def fase_huellas(a, salida):
@@ -82,7 +106,7 @@ def fase_equipos(a, salida):
     necesita(salida / "embeddings.npy", "huellas")
     todos = pd.read_csv(salida / "posiciones_todos.csv")
     embs = np.load(salida / "embeddings.npy")
-    eq, sentido, _ = equipos_automaticos(a.video, todos, embs)
+    eq, sentido, _ = equipos_automaticos(a.video, todos, embs, largo_m=medidas_del_campo(a, salida)[0])
     eq[["frame", "track_id", "clase", "equipo", "es_portero", "prob"]].to_csv(salida / "equipos.csv", index=False)
     json.dump({"sentido": sentido}, open(salida / "equipos.json", "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)
@@ -96,7 +120,6 @@ def fase_equipos(a, salida):
 def fase_jugador(a, salida):
     from src.fase1_equipos import equipo_de_un_jugador
     from src.fase1_tracking import elegir_jugador_con_clic, seguir_jugador
-    from src.fase2_homografia import ANCHO_M, LARGO_M
     necesita(salida / "equipos.csv", "equipos")
     todos = pd.read_csv(salida / "posiciones_todos.csv")
     diag = pd.read_csv(salida / "homografia.csv")
@@ -104,6 +127,7 @@ def fase_jugador(a, salida):
     eq = todos.merge(pd.read_csv(salida / "equipos.csv")[["frame", "track_id", "equipo", "es_portero"]],
                      on=["frame", "track_id"], how="left")
     sentido = json.load(open(salida / "equipos.json", encoding="utf-8"))["sentido"]
+    LARGO_M, ANCHO_M = medidas_del_campo(a, salida)
 
     # 1. ¿Quién?
     track_id = a.track_id
@@ -148,7 +172,7 @@ def fase_jugador(a, salida):
         pos["y_m"] = (ANCHO_M - pos.y_m).round(2)
     pos.to_csv(salida / "posiciones.csv", index=False)
     pct = pos.valido.mean()
-    lado = "izquierda (girado para que ataque hacia x = 105)" if ataca_izq else "derecha"
+    lado = f"izquierda (girado para que ataque hacia x = {LARGO_M:g})" if ataca_izq else "derecha"
     print(f"  Jugador {track_id} ({equipo or 'equipo ?'}) localizado en el {pct:.1%} de los fotogramas · "
           f"ataca hacia la {lado} · sentido según: {origen}")
     if pct < 0.5:
@@ -219,6 +243,8 @@ def main(argv=None):
     lado.add_argument("--ataca_izquierda", action="store_true", help="forzar: su equipo ataca hacia la izquierda de la cámara")
     lado.add_argument("--ataca_derecha", action="store_true", help="forzar: su equipo ataca hacia la derecha de la cámara")
     ap.add_argument("--modelo_campo", default=None, help="pesos del modelo de puntos del campo (por defecto, el de Roboflow)")
+    ap.add_argument("--campo", default=None,
+                    help="medidas reales del campo LARGOxANCHO en metros, p. ej. 100x64 (por defecto 105x68)")
     ap.add_argument("--min_inliers", type=int, default=4, help="inliers mínimos para aceptar una homografía")
     ap.add_argument("--tau", type=float, default=TAU_POR_DEFECTO, help="umbral de re-identificación")
     ap.add_argument("--device", default=None, help="cuda o cpu (por defecto, cuda si hay GPU)")
@@ -231,6 +257,13 @@ def main(argv=None):
             a.device = "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             a.device = "cpu"
+    from src.fase2_homografia import comprobar_medidas, leer_medidas
+    try:
+        a.campo_medidas = leer_medidas(a.campo)
+    except ValueError as e:
+        print(f"✗ {e}"); return 1
+    for aviso in comprobar_medidas(*a.campo_medidas):
+        print(f"⚠ {aviso}")
     video = Path(a.video)
     if not video.exists():
         print(f"✗ No encuentro el vídeo {video}"); return 1

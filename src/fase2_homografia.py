@@ -19,9 +19,15 @@ Cómo funciona
 
 Sistema de coordenadas (docs/formatos.md)
 -----------------------------------------
-Campo de 105 x 68 m. x va de 0 a 105 a lo largo del campo, de izquierda a
-derecha tal como lo ve la cámara. y va de 0 (banda del lado de la cámara)
-a 68 (banda lejana).
+Campo de LARGO x ANCHO m (por defecto 105 x 68, la medida recomendada por la
+FIFA). x va de 0 a LARGO a lo largo del campo, de izquierda a derecha tal como
+lo ve la cámara. y va de 0 (banda del lado de la cámara) a ANCHO (banda lejana).
+
+Medidas del campo
+-----------------
+Las Reglas de Juego permiten campos de distintas medidas, pero las áreas, el
+punto de penalti y el círculo central miden siempre lo mismo. Por eso
+config_campo() cambia solo el largo y el ancho y deja las áreas fijas.
 """
 from __future__ import annotations
 
@@ -32,18 +38,59 @@ import numpy as np
 
 from sports.configs.soccer import SoccerPitchConfiguration
 
-LARGO_M = 105.0
+LARGO_M = 105.0   # medidas por defecto (recomendación de la FIFA y de la mayoría de estadios de 1ª)
 ANCHO_M = 68.0
 
-# Medidas reglamentarias en centímetros. La configuración por defecto de
-# roboflow/sports mide 120 x 70 m y el área no es reglamentaria.
-CONFIG_CAMPO = SoccerPitchConfiguration(
-    length=10500, width=6800,
-    penalty_box_length=1650, penalty_box_width=4032,
-    goal_box_length=550, goal_box_width=1832,
-    centre_circle_radius=915, penalty_spot_distance=1100,
-)
-VERTICES_CM = np.array(CONFIG_CAMPO.vertices, dtype=np.float32)  # (32, 2)
+# Límites de las Reglas de Juego (IFAB, regla 1)
+LIMITES_REGLAS = {"largo": (90.0, 120.0), "ancho": (45.0, 90.0)}
+LIMITES_INTERNACIONAL = {"largo": (100.0, 110.0), "ancho": (64.0, 75.0)}
+
+
+def comprobar_medidas(largo_m: float, ancho_m: float) -> list[str]:
+    """Lanza ValueError si las medidas no son posibles según las Reglas de Juego.
+
+    Devuelve avisos (lista de textos) si son válidas pero no de partido internacional.
+    """
+    (l0, l1), (a0, a1) = LIMITES_REGLAS["largo"], LIMITES_REGLAS["ancho"]
+    if not (l0 <= largo_m <= l1 and a0 <= ancho_m <= a1):
+        raise ValueError(f"Un campo de {largo_m:g} x {ancho_m:g} m no cumple las Reglas de Juego "
+                         f"(largo {l0:g}-{l1:g} m, ancho {a0:g}-{a1:g} m)")
+    if ancho_m >= largo_m:
+        raise ValueError("El largo tiene que ser mayor que el ancho (¿están al revés?)")
+    (l0, l1), (a0, a1) = LIMITES_INTERNACIONAL["largo"], LIMITES_INTERNACIONAL["ancho"]
+    if not (l0 <= largo_m <= l1 and a0 <= ancho_m <= a1):
+        return [f"{largo_m:g} x {ancho_m:g} m es válido, pero fuera de las medidas de partido "
+                f"internacional ({l0:g}-{l1:g} x {a0:g}-{a1:g} m)"]
+    return []
+
+
+def leer_medidas(texto: str | None) -> tuple[float, float]:
+    """'100x64' -> (100.0, 64.0). None o '' -> medidas por defecto."""
+    if not texto:
+        return LARGO_M, ANCHO_M
+    try:
+        largo, ancho = (float(v.replace(",", ".")) for v in texto.lower().replace("×", "x").split("x"))
+    except ValueError:
+        raise ValueError(f"No entiendo las medidas '{texto}': escribe LARGOxANCHO en metros, p. ej. 100x64")
+    comprobar_medidas(largo, ancho)
+    return largo, ancho
+
+
+def config_campo(largo_m: float = LARGO_M, ancho_m: float = ANCHO_M) -> SoccerPitchConfiguration:
+    """Plantilla de los 32 puntos en centímetros. Áreas, penalti y círculo reglamentarios y fijos.
+
+    La configuración por defecto de roboflow/sports mide 120 x 70 m y su área no es reglamentaria.
+    """
+    return SoccerPitchConfiguration(
+        length=int(round(largo_m * 100)), width=int(round(ancho_m * 100)),
+        penalty_box_length=1650, penalty_box_width=4032,
+        goal_box_length=550, goal_box_width=1832,
+        centre_circle_radius=915, penalty_spot_distance=1100,
+    )
+
+
+CONFIG_CAMPO = config_campo()
+VERTICES_CM = np.array(CONFIG_CAMPO.vertices, dtype=np.float32)  # (32, 2), campo por defecto
 
 
 @dataclass
@@ -79,8 +126,12 @@ class EstimadorHomografia:
 
     def __init__(self, confianza_min: float = 0.5, usar_ransac: bool = True,
                  umbral_ransac_cm: float = 100.0, max_frames_reutilizar: int = 25,
-                 error_max_cm: float = 150.0, min_inliers: int = 4):
+                 error_max_cm: float = 150.0, min_inliers: int = 4,
+                 largo_m: float = LARGO_M, ancho_m: float = ANCHO_M):
         self.confianza_min = confianza_min
+        comprobar_medidas(largo_m, ancho_m)
+        self.largo_m, self.ancho_m = largo_m, ancho_m
+        self.vertices_cm = np.array(config_campo(largo_m, ancho_m).vertices, dtype=np.float32)
         # Con 4 puntos la homografía encaja siempre (8 ecuaciones, 8 incógnitas):
         # el error sale 0 aunque los puntos estén mal. Exigir más inliers da
         # redundancia para detectarlo (experimento de la #17).
@@ -109,7 +160,7 @@ class EstimadorHomografia:
 
         H, inliers, error = None, np.zeros(32, bool), float("nan")
         if n >= 4:
-            src, dst = puntos_px[usados], VERTICES_CM[usados]
+            src, dst = puntos_px[usados], self.vertices_cm[usados]
             metodo = cv2.RANSAC if self.usar_ransac else 0
             H, mask = cv2.findHomography(src, dst, metodo, self.umbral_ransac_cm)
             if H is not None:
@@ -136,25 +187,26 @@ class EstimadorHomografia:
         return ResultadoHomografia(None, False, False, n, int(inliers.sum()), error, usados, inliers)
 
 
-def pixel_a_metros(puntos_px: np.ndarray, H: np.ndarray) -> np.ndarray:
+def pixel_a_metros(puntos_px: np.ndarray, H: np.ndarray, ancho_m: float = ANCHO_M) -> np.ndarray:
     """Convierte puntos (u, v) en píxeles a (x, y) en metros con nuestro sistema de ejes.
 
-    puntos_px : (N, 2). Devuelve (N, 2) en metros.
+    puntos_px : (N, 2). Devuelve (N, 2) en metros. ancho_m: el mismo que usó la homografía.
     """
     puntos_px = np.asarray(puntos_px, dtype=np.float32).reshape(-1, 1, 2)
     if len(puntos_px) == 0:
         return np.empty((0, 2), dtype=np.float32)
     cm = cv2.perspectiveTransform(puntos_px, H).reshape(-1, 2)
     x_m = cm[:, 0] / 100.0
-    y_m = ANCHO_M - cm[:, 1] / 100.0   # Roboflow pone y = 0 en la banda lejana
+    y_m = ancho_m - cm[:, 1] / 100.0   # Roboflow pone y = 0 en la banda lejana
     return np.stack([x_m, y_m], axis=1)
 
 
-def dentro_del_campo(xy_m: np.ndarray, margen_m: float = 3.0) -> np.ndarray:
+def dentro_del_campo(xy_m: np.ndarray, margen_m: float = 3.0, largo_m: float = LARGO_M,
+                     ancho_m: float = ANCHO_M) -> np.ndarray:
     """True para posiciones dentro del campo, con un margen para jugadores en la banda."""
     xy_m = np.asarray(xy_m)
-    return ((xy_m[:, 0] >= -margen_m) & (xy_m[:, 0] <= LARGO_M + margen_m) &
-            (xy_m[:, 1] >= -margen_m) & (xy_m[:, 1] <= ANCHO_M + margen_m))
+    return ((xy_m[:, 0] >= -margen_m) & (xy_m[:, 0] <= largo_m + margen_m) &
+            (xy_m[:, 1] >= -margen_m) & (xy_m[:, 1] <= ancho_m + margen_m))
 
 
 def pies_de_cajas(xyxy: np.ndarray) -> np.ndarray:

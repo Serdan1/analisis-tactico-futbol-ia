@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import supervision as sv
 
-from src.fase2_homografia import (ANCHO_M, LARGO_M, VERTICES_CM, EstimadorHomografia,
+from src.fase2_homografia import (ANCHO_M, LARGO_M, VERTICES_CM, EstimadorHomografia, leer_medidas,
                                   dentro_del_campo, pies_de_cajas, pixel_a_metros)
 
 MODELO_JUGADORES = "models/football-player-detection.pt"
@@ -46,11 +46,13 @@ def puntos_campo(modelo_campo, frame, device):
 
 def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ransac=True,
                    max_frames=None, paso=1, video_control=None, progreso=True, modo_demo=False,
-                   inicio=0, modelo_campo=None, min_inliers=4):
+                   inicio=0, modelo_campo=None, min_inliers=4,
+                   largo_m=LARGO_M, ancho_m=ANCHO_M):
     """Recorre el vídeo y devuelve dos DataFrames: posiciones de todos y diagnóstico de H.
 
     modo_demo=True reproduce la demo de Roboflow (todos los puntos, sin RANSAC
     y sin descartar homografías malas), para comparar en la memoria.
+    largo_m, ancho_m: medidas reales del campo (las áreas son siempre reglamentarias).
     """
     error_max_cm = 150.0
     if modo_demo:
@@ -66,7 +68,7 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
     estimador = EstimadorHomografia(confianza_min=confianza_min, usar_ransac=usar_ransac,
                                     error_max_cm=error_max_cm,
                                     max_frames_reutilizar=max(1, round(fps / paso)),
-                                    min_inliers=min_inliers)
+                                    min_inliers=min_inliers, largo_m=largo_m, ancho_m=ancho_m)
     filas, diag = [], []
 
     escritor = None
@@ -100,8 +102,9 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
         # 3. Pies de cada jugador -> metros
         xy_m = np.full((len(det), 2), np.nan, np.float32)
         if res.valida and len(det):
-            xy_m = pixel_a_metros(pies_de_cajas(det.xyxy), res.H)
-        validos = np.zeros(len(det), bool) if not res.valida else dentro_del_campo(xy_m)
+            xy_m = pixel_a_metros(pies_de_cajas(det.xyxy), res.H, ancho_m)
+        validos = (np.zeros(len(det), bool) if not res.valida
+                   else dentro_del_campo(xy_m, largo_m=largo_m, ancho_m=ancho_m))
         for k in range(len(det)):
             x1, y1, x2, y2 = (int(round(float(c))) for c in det.xyxy[k])
             filas.append(dict(frame=n_frame, t_s=round(t_s, 3), track_id=int(det.tracker_id[k]),
@@ -112,7 +115,7 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
                               valido=int(validos[k])))
 
         if escritor is not None:
-            escritor.write(dibujar_control(frame, kp_xy, res, det, xy_m, validos))
+            escritor.write(dibujar_control(frame, kp_xy, res, det, xy_m, validos, largo_m=largo_m, ancho_m=ancho_m))
         if progreso and (i % 25 == 0):
             print(f"  fotograma {i}/{total}  puntos={res.n_puntos} inliers={res.n_inliers} "
                   f"error={res.error_cm:.0f} cm  jugadores={len(det)}", flush=True)
@@ -123,11 +126,12 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
 
 
 def posiciones_de_un_jugador(todos: pd.DataFrame, diag: pd.DataFrame, track_id: int,
-                             equipo: str = "", ataca_izquierda: bool = False) -> pd.DataFrame:
+                             equipo: str = "", ataca_izquierda: bool = False,
+                             largo_m: float = LARGO_M, ancho_m: float = ANCHO_M) -> pd.DataFrame:
     """Formato de docs/formatos.md: una fila por fotograma; vacío si no se ve.
 
-    ataca_izquierda=True gira el campo (x -> 105 - x, y -> 68 - y) para que el
-    equipo del jugador ataque siempre hacia x = 105, como pide el formato.
+    ataca_izquierda=True gira el campo (x -> largo - x, y -> ancho - y) para que el
+    equipo del jugador ataque siempre hacia x = largo, como pide el formato.
     """
     j = todos[todos.track_id == track_id].set_index("frame")
     out = diag[["frame", "t_s"]].copy()
@@ -137,8 +141,8 @@ def posiciones_de_un_jugador(todos: pd.DataFrame, diag: pd.DataFrame, track_id: 
     out["y_m"] = out.frame.map(j.y_m)
     out["valido"] = out.frame.map(j.valido).fillna(0).astype(int)
     if ataca_izquierda:
-        out["x_m"] = (LARGO_M - out.x_m).round(2)
-        out["y_m"] = (ANCHO_M - out.y_m).round(2)
+        out["x_m"] = (largo_m - out.x_m).round(2)
+        out["y_m"] = (ancho_m - out.y_m).round(2)
     return out
 
 
@@ -169,7 +173,8 @@ def posiciones_por_tramos(todos: pd.DataFrame, diag: pd.DataFrame, tramos, equip
 
 
 # ---------------------------------------------------------------- vídeo de control
-def dibujar_control(frame, kp_xy, res, det, xy_m, validos, escala=6, margen=30):
+def dibujar_control(frame, kp_xy, res, det, xy_m, validos, escala=6, margen=30,
+                    largo_m=LARGO_M, ancho_m=ANCHO_M):
     """Fotograma con los puntos del campo (verde = inlier, amarillo = usado pero
     descartado por RANSAC, rojo = descartado por baja confianza) y un radar."""
     img = frame.copy()
@@ -184,7 +189,7 @@ def dibujar_control(frame, kp_xy, res, det, xy_m, validos, escala=6, margen=30):
         cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 255), 1)
         cv2.putText(img, str(det.tracker_id[k]), (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-    radar = dibujar_radar(xy_m[validos], det.tracker_id[validos], escala, margen)
+    radar = dibujar_radar(xy_m[validos], det.tracker_id[validos], escala, margen, largo_m, ancho_m)
     h, w = radar.shape[:2]
     H_img, W_img = img.shape[:2]
     y0, x0 = H_img - h - 10, (W_img - w) // 2
@@ -195,21 +200,21 @@ def dibujar_control(frame, kp_xy, res, det, xy_m, validos, escala=6, margen=30):
     return img
 
 
-def dibujar_radar(xy_m, ids, escala=6, margen=30):
+def dibujar_radar(xy_m, ids, escala=6, margen=30, largo_m=LARGO_M, ancho_m=ANCHO_M):
     """Campo 2D visto desde arriba (y = 0 abajo, como en docs/formatos.md)."""
-    W, H = int(LARGO_M * escala) + 2 * margen, int(ANCHO_M * escala) + 2 * margen
+    W, H = int(largo_m * escala) + 2 * margen, int(ancho_m * escala) + 2 * margen
     radar = np.full((H, W, 3), (60, 140, 60), np.uint8)
 
     def p(x, y):  # metros -> píxel del radar
         return int(margen + x * escala), int(H - margen - y * escala)
 
     blanco = (255, 255, 255)
-    cv2.rectangle(radar, p(0, ANCHO_M), p(LARGO_M, 0), blanco, 2)
-    cv2.line(radar, p(LARGO_M / 2, 0), p(LARGO_M / 2, ANCHO_M), blanco, 2)
-    cv2.circle(radar, p(LARGO_M / 2, ANCHO_M / 2), int(9.15 * escala), blanco, 2)
-    for x0, s in ((0, 1), (LARGO_M, -1)):
-        cv2.rectangle(radar, p(x0, ANCHO_M / 2 + 20.16), p(x0 + s * 16.5, ANCHO_M / 2 - 20.16), blanco, 2)
-        cv2.rectangle(radar, p(x0, ANCHO_M / 2 + 9.16), p(x0 + s * 5.5, ANCHO_M / 2 - 9.16), blanco, 2)
+    cv2.rectangle(radar, p(0, ancho_m), p(largo_m, 0), blanco, 2)
+    cv2.line(radar, p(largo_m / 2, 0), p(largo_m / 2, ancho_m), blanco, 2)
+    cv2.circle(radar, p(largo_m / 2, ancho_m / 2), int(9.15 * escala), blanco, 2)
+    for x0, s in ((0, 1), (largo_m, -1)):
+        cv2.rectangle(radar, p(x0, ancho_m / 2 + 20.16), p(x0 + s * 16.5, ancho_m / 2 - 20.16), blanco, 2)
+        cv2.rectangle(radar, p(x0, ancho_m / 2 + 9.16), p(x0 + s * 5.5, ancho_m / 2 - 9.16), blanco, 2)
     for (x, y), i in zip(xy_m, ids):
         cv2.circle(radar, p(x, y), 7, (0, 140, 255), -1)
         cv2.putText(radar, str(i), (p(x, y)[0] + 8, p(x, y)[1] - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, blanco, 1)
@@ -233,20 +238,23 @@ def main():
     ap.add_argument("--paso", type=int, default=1, help="procesar 1 de cada N fotogramas")
     ap.add_argument("--inicio", type=int, default=0, help="primer fotograma a procesar")
     ap.add_argument("--video_control", action="store_true", help="guardar control.mp4")
+    ap.add_argument("--campo", default=None, help="medidas del campo LARGOxANCHO en metros (por defecto 105x68)")
     a = ap.parse_args()
+    largo_m, ancho_m = leer_medidas(a.campo)
 
     salida = Path(a.salida)
     salida.mkdir(parents=True, exist_ok=True)
     todos, diag = procesar_video(a.video, a.device, a.imgsz, a.confianza_min, not a.sin_ransac,
                                  a.max_frames, a.paso, salida / "control.mp4" if a.video_control else None,
-                                 modo_demo=a.modo_demo, inicio=a.inicio)
+                                 modo_demo=a.modo_demo, inicio=a.inicio, largo_m=largo_m, ancho_m=ancho_m)
     todos.to_csv(salida / "posiciones_todos.csv", index=False)
     diag.to_csv(salida / "homografia.csv", index=False)
     print(f"\nH válida en {diag.valida.mean():.0%} de los fotogramas "
           f"({diag.reutilizada.sum()} reutilizando la anterior). Error medio {diag.error_cm.median():.0f} cm (mediana).")
     print(f"Jugadores distintos (track_id): {todos.track_id.nunique()}")
     if a.track_id is not None:
-        pos = posiciones_de_un_jugador(todos, diag, a.track_id, ataca_izquierda=a.ataca_izquierda)
+        pos = posiciones_de_un_jugador(todos, diag, a.track_id, ataca_izquierda=a.ataca_izquierda,
+                                       largo_m=largo_m, ancho_m=ancho_m)
         pos.to_csv(salida / "posiciones.csv", index=False)
         print(f"posiciones.csv del jugador {a.track_id}: {pos.valido.mean():.0%} de fotogramas válidos")
     print(f"Resultados en {salida}/")

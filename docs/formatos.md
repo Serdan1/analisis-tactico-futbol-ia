@@ -6,7 +6,10 @@ Estos dos archivos conectan el trabajo de cada uno. **No se cambian sin avisar a
 
 Lo produce Serdan1 y lo usa Alex. Una fila por fotograma del jugador analizado.
 
-Posiciones en **metros** sobre un campo de **105 × 68**:
+Posiciones en **metros** sobre un campo de **105 × 68** (por defecto). Si el estadio mide otra cosa, se indica con
+`main.py --campo LARGOxANCHO` (p. ej. `--campo 100x64`); entonces x va de 0 a LARGO e y de 0 a ANCHO, y las medidas
+usadas se guardan en `outputs/<clip>/campo.json` (`{"largo_m": 100, "ancho_m": 64}`) y en `resumen.json`
+(`campo_m`). Las métricas y figuras deberían leerlas de ahí en vez de suponer 105 × 68.
 
 - **x** va de 0 a 105 a lo largo del campo, de izquierda a derecha tal como lo ve la cámara.
 - **y** va de 0 (banda del lado de la cámara) a 68 (banda lejana).
