@@ -17,9 +17,29 @@ UMBRAL_SPRINT_KMH = 25
 DURACION_MIN_SPRINT_S = 1.0
 VEL_MAX_CREIBLE_KMH = 36
 
+# Medidas del campo. Por defecto 105 x 68 m; si el clip se procesó con
+# main.py --campo LARGOxANCHO, se leen de campo.json (junto a posiciones.csv).
+# Las áreas miden siempre lo mismo (16,5 x 40,32 m), solo cambian largo y ancho.
+CAMPO_POR_DEFECTO = (105.0, 68.0)
+AREA_LARGO_M, AREA_ANCHO_M = 16.5, 40.32
 
-def cargar_posiciones(ruta_csv):
-    # 1. Leer el archivo CSV
+
+def leer_campo(ruta_csv):
+    """(largo, ancho) de campo.json en la carpeta de posiciones.csv; si no hay, 105 x 68."""
+    ruta = Path(ruta_csv).parent / "campo.json"
+    if ruta.exists():
+        c = json.loads(ruta.read_text(encoding="utf-8"))
+        return float(c["largo_m"]), float(c["ancho_m"])
+    return CAMPO_POR_DEFECTO
+
+
+def medidas_campo(df):
+    """Medidas del campo guardadas en el DataFrame por cargar_posiciones."""
+    return df.attrs.get("campo", CAMPO_POR_DEFECTO)
+
+
+def cargar_posiciones(ruta_csv, campo=None):
+    # 1. Leer el archivo CSV (las medidas del campo, de campo.json o 105 x 68)
     df = pd.read_csv(ruta_csv)
 
     # 2. Definir las columnas obligatorias
@@ -47,13 +67,15 @@ def cargar_posiciones(ruta_csv):
     # 4. Ordenar los datos por fotograma
     df = df.sort_values("frame").reset_index(drop=True)
 
-    # 5. Devolver el DataFrame
+    # 5. Guardar las medidas del campo y devolver el DataFrame
+    df.attrs["campo"] = tuple(campo) if campo else leer_campo(ruta_csv)
     return df
 
 
 
 def suavizar_trayectoria(df):
     """Limpia y suaviza las coordenadas del jugador."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Crear una copia del DataFrame
     df = df.copy()
@@ -65,8 +87,8 @@ def suavizar_trayectoria(df):
     # 3. Comprobar que las posiciones sean validas
     mascara = (
         (df["valido"] == 1)
-        & df["x_m"].between(0, 105)
-        & df["y_m"].between(0, 68)
+        & df["x_m"].between(0, largo)
+        & df["y_m"].between(0, ancho)
     )
 
     df["valido"] = mascara.astype(int)
@@ -228,12 +250,13 @@ def detectar_sprints(df):
 
 def ocupacion_zonas(df):
     """Calcula la ocupacion de las zonas del campo."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Seleccionar las posiciones validas
     datos = df.loc[
         (df["valido"] == 1)
-        & df["x_suave"].between(0, 105)
-        & df["y_suave"].between(0, 68)
+        & df["x_suave"].between(0, largo)
+        & df["y_suave"].between(0, ancho)
     ].copy()
 
     # 2. Comprobar que existen datos validos
@@ -241,8 +264,8 @@ def ocupacion_zonas(df):
         raise ValueError("No hay posiciones validas")
 
     # 3. Calcular las dimensiones de cada zona
-    ancho_zona = 105 / 6
-    alto_zona = 68 / 3
+    ancho_zona = largo / 6
+    alto_zona = ancho / 3
 
     # 4. Calcular la columna y la fila
     datos["columna"] = (
@@ -274,18 +297,18 @@ def ocupacion_zonas(df):
     # 7. Calcular los porcentajes de los tercios
     tercios = {
         "primer_tercio": round(float(
-            (datos["x_suave"] < 35).mean() * 100
+            (datos["x_suave"] < largo / 3).mean() * 100
         ), 2),
 
         "tercio_medio": round(float(
             (
-                (datos["x_suave"] >= 35)
-                & (datos["x_suave"] < 70)
+                (datos["x_suave"] >= largo / 3)
+                & (datos["x_suave"] < 2 * largo / 3)
             ).mean() * 100
         ), 2),
 
         "ultimo_tercio": round(float(
-            (datos["x_suave"] >= 70).mean() * 100
+            (datos["x_suave"] >= 2 * largo / 3).mean() * 100
         ), 2)
     }
 
@@ -315,12 +338,13 @@ def ocupacion_zonas(df):
 
 def posicion_media(df):
     """Calcula la posicion media del jugador."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Seleccionar posiciones validas
     datos = df.loc[
         (df["valido"] == 1)
-        & df["x_suave"].between(0, 105)
-        & df["y_suave"].between(0, 68)
+        & df["x_suave"].between(0, largo)
+        & df["y_suave"].between(0, ancho)
     ]
 
     # 2. Comprobar que existen datos
@@ -341,12 +365,13 @@ def posicion_media(df):
 
 def analizar_area_rival(df):
     """Calcula la ocupacion y las entradas al area rival."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Identificar posiciones validas
     validos = (
         (df["valido"] == 1)
-        & df["x_suave"].between(0, 105)
-        & df["y_suave"].between(0, 68)
+        & df["x_suave"].between(0, largo)
+        & df["y_suave"].between(0, ancho)
     )
 
     # 2. Comprobar que existen posiciones validas
@@ -356,8 +381,8 @@ def analizar_area_rival(df):
     # 3. Identificar posiciones dentro del area
     dentro_area = (
         validos
-        & df["x_suave"].between(88.5, 105)
-        & df["y_suave"].between(13.84, 54.16)
+        & df["x_suave"].between(largo - AREA_LARGO_M, largo)
+        & df["y_suave"].between((ancho - AREA_ANCHO_M) / 2, (ancho + AREA_ANCHO_M) / 2)
     )
 
     # 4. Calcular el porcentaje de ocupacion
@@ -445,20 +470,26 @@ def exportar_metricas(metricas, ruta_json):
 
 
 
-def metricas_completas(ruta_csv, jugador: dict, clip: str = "") -> dict:
-    """Calcula todas las metricas del jugador."""
+def metricas_completas(ruta_csv, jugador: dict, clip: str = "", campo=None) -> dict:
+    """Calcula todas las metricas del jugador.
+
+    campo: (largo, ancho) en metros; por defecto, el de campo.json o 105 x 68.
+    """
 
     # 1. Cargar las posiciones
-    df = cargar_posiciones(ruta_csv)
+    df = cargar_posiciones(ruta_csv, campo)
+    campo = medidas_campo(df)
 
     # 2. Calcular la visibilidad
     visibilidad = calcular_visibilidad(df)
 
     # 3. Suavizar la trayectoria
     df = suavizar_trayectoria(df)
+    df.attrs["campo"] = campo
 
     # 4. Calcular distancias y velocidades
     df = distancia_y_velocidad(df)
+    df.attrs["campo"] = campo
 
     # 5. Obtener las metricas fisicas
     resumen = resumen_distancia_velocidad(df)
@@ -479,6 +510,7 @@ def metricas_completas(ruta_csv, jugador: dict, clip: str = "") -> dict:
     metricas = {
         "clip": clip,
         "jugador": jugador,
+        "campo_m": list(campo),
 
         "tiempo_visible_s": visibilidad["tiempo_visible_s"],
         "frames_validos_pct": visibilidad["frames_validos_pct"],

@@ -191,12 +191,17 @@ def fase_metricas(a, salida, resumen):
     except NotImplementedError:
         print("  (pendiente: fase2_metricas.metricas_completas todavía no está programada — Alex, #7/#8)")
         return dict(metricas="pendiente")
+    except ValueError as e:      # p. ej. "No hay posiciones validas": el jugador casi no se ve
+        raise ErrorPipeline(f"No se pueden calcular las métricas: {e}. "
+                            "¿Se ve al jugador en el clip? Prueba con otro --track_id o --clic.")
     json.dump(metricas, open(salida / "metricas.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     try:
         figs = visualizaciones.figuras_completas(salida / "posiciones.csv", salida / "figuras")
         print(f"  {len(figs)} figuras en {salida / 'figuras'}")
     except NotImplementedError:
         print("  (pendiente: visualizaciones.figuras_completas — Alex)")
+    except ValueError as e:
+        print(f"  ⚠ No se han podido hacer todas las figuras: {e}")
     print(f"  metricas.json guardado")
     return dict(metricas="ok")
 

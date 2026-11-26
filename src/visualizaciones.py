@@ -16,18 +16,22 @@ from src.fase2_metricas import (
     distancia_y_velocidad,
     resumen_distancia_velocidad,
     ocupacion_zonas,
-    detectar_sprints
+    detectar_sprints,
+    medidas_campo
 )
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import LineCollection
 
-def dibujar_campo(ax):
-    """Dibuja un campo de futbol de 105 x 68 metros."""
+def dibujar_campo(ax, largo=105.0, ancho=68.0):
+    """Dibuja un campo de futbol de largo x ancho metros (por defecto 105 x 68).
+
+    Las areas, el circulo y el punto de penalti miden siempre lo mismo.
+    """
 
     # 1. Configurar los limites del campo
-    ax.set_xlim(0, 105)
-    ax.set_ylim(0, 68)
+    ax.set_xlim(0, largo)
+    ax.set_ylim(0, ancho)
     ax.set_aspect("equal")
 
     # 2. Configurar el color del cesped
@@ -35,7 +39,7 @@ def dibujar_campo(ax):
 
     # 3. Dibujar los limites exteriores
     ax.add_patch(Rectangle(
-        (0, 0), 105, 68,
+        (0, 0), largo, ancho,
         fill=False,
         edgecolor="white",
         linewidth=2
@@ -43,42 +47,42 @@ def dibujar_campo(ax):
 
     # 4. Dibujar la linea central
     ax.plot(
-        [52.5, 52.5], [0, 68],
+        [largo / 2, largo / 2], [0, ancho],
         color="white",
         linewidth=1.5
     )
 
     # 5. Dibujar el circulo central
     ax.add_patch(Circle(
-        (52.5, 34), 9.15,
+        (largo / 2, ancho / 2), 9.15,
         fill=False,
         edgecolor="white",
         linewidth=1.5
     ))
 
     # 6. Dibujar el punto central
-    ax.plot(52.5, 34, "wo", markersize=3)
+    ax.plot(largo / 2, ancho / 2, "wo", markersize=3)
 
     # 7. Dibujar las areas grandes
-    for x in [0, 88.5]:
+    for x in [0, largo - 16.5]:
         ax.add_patch(Rectangle(
-            (x, 13.84), 16.5, 40.32,
+            (x, ancho / 2 - 20.16), 16.5, 40.32,
             fill=False,
             edgecolor="white",
             linewidth=1.5
         ))
 
     # 8. Dibujar las areas pequenas
-    for x in [0, 99.5]:
+    for x in [0, largo - 5.5]:
         ax.add_patch(Rectangle(
-            (x, 24.84), 5.5, 18.32,
+            (x, ancho / 2 - 9.16), 5.5, 18.32,
             fill=False,
             edgecolor="white",
             linewidth=1.5
         ))
 
     # 9. Dibujar los puntos de penalti
-    ax.plot([11, 94], [34, 34],
+    ax.plot([11, largo - 11], [ancho / 2, ancho / 2],
             "wo", markersize=3)
 
     # 10. Ocultar los ejes
@@ -90,12 +94,13 @@ def dibujar_campo(ax):
 
 def mapa_calor(df, ruta_png):
     """Genera un mapa de calor de las posiciones del jugador."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Seleccionar posiciones validas
     datos = df.loc[
         (df["valido"] == 1)
-        & df["x_suave"].between(0, 105)
-        & df["y_suave"].between(0, 68)
+        & df["x_suave"].between(0, largo)
+        & df["y_suave"].between(0, ancho)
     ]
 
     # 2. Comprobar que existen posiciones
@@ -110,8 +115,8 @@ def mapa_calor(df, ruta_png):
     histograma, _, _ = np.histogram2d(
         x,
         y,
-        bins=[105, 68],
-        range=[[0, 105], [0, 68]]
+        bins=[int(round(largo)), int(round(ancho))],
+        range=[[0, largo], [0, ancho]]
     )
 
     # 5. Suavizar el histograma
@@ -122,12 +127,12 @@ def mapa_calor(df, ruta_png):
 
     # 7. Crear la figura y dibujar el campo
     fig, ax = plt.subplots(figsize=(12, 8))
-    dibujar_campo(ax)
+    dibujar_campo(ax, largo, ancho)
 
     # 8. Representar el mapa de calor
     imagen = ax.imshow(
         calor.T,
-        extent=[0, 105, 0, 68],
+        extent=[0, largo, 0, ancho],
         origin="lower",
         cmap="hot",
         alpha=calor.T * 0.9,
@@ -167,6 +172,7 @@ def mapa_calor(df, ruta_png):
 
 def trayectoria(df, ruta_png):
     """Representa la trayectoria del jugador sobre el campo."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Ordenar las posiciones temporalmente
     datos = df.sort_values("frame").copy()
@@ -174,8 +180,8 @@ def trayectoria(df, ruta_png):
     # 2. Identificar las posiciones validas
     mascara = (
         (datos["valido"] == 1)
-        & datos["x_suave"].between(0, 105)
-        & datos["y_suave"].between(0, 68)
+        & datos["x_suave"].between(0, largo)
+        & datos["y_suave"].between(0, ancho)
     )
 
     validos = datos.loc[mascara]
@@ -194,7 +200,7 @@ def trayectoria(df, ruta_png):
 
     # 6. Crear la figura y dibujar el campo
     fig, ax = plt.subplots(figsize=(12, 8))
-    dibujar_campo(ax)
+    dibujar_campo(ax, largo, ancho)
 
     # 7. Dibujar la trayectoria
     ax.plot(
@@ -362,18 +368,19 @@ def grafica_velocidad(df, ruta_png):
 
 def mapa_zonas(df, ruta_png):
     """Representa la ocupacion del jugador en las 18 zonas."""
+    largo, ancho = medidas_campo(df)
     
     # 1. Obtener los porcentajes de ocupacion
     resultado = ocupacion_zonas(df)
     zonas = resultado["zonas_18"]
     
     # 2. Definir las dimensiones de cada zona
-    ancho_zona = 105 / 6
-    alto_zona = 68 / 3
+    ancho_zona = largo / 6
+    alto_zona = ancho / 3
     
     # 3. Crear la figura y dibujar el campo
     fig, ax = plt.subplots(figsize=(12, 8))
-    dibujar_campo(ax)
+    dibujar_campo(ax, largo, ancho)
     
     # 4. Configurar la escala de colores
     cmap = plt.get_cmap("YlOrRd")
@@ -468,6 +475,7 @@ def mapa_zonas(df, ruta_png):
 
 def trayectoria_por_velocidad(df, ruta_png):
     """Representa la trayectoria coloreada segun la velocidad."""
+    largo, ancho = medidas_campo(df)
 
     # 1. Ordenar los datos temporalmente
     datos = df.sort_values("frame").reset_index(drop=True)
@@ -480,8 +488,8 @@ def trayectoria_por_velocidad(df, ruta_png):
     # 3. Identificar las posiciones validas
     posiciones_validas = (
         (datos["valido"] == 1)
-        & datos["x_suave"].between(0, 105)
-        & datos["y_suave"].between(0, 68)
+        & datos["x_suave"].between(0, largo)
+        & datos["y_suave"].between(0, ancho)
     ).to_numpy()
 
     # 4. Crear las listas de segmentos y velocidades
@@ -524,7 +532,7 @@ def trayectoria_por_velocidad(df, ruta_png):
 
     # 7. Crear la figura y dibujar el campo
     fig, ax = plt.subplots(figsize=(12, 8))
-    dibujar_campo(ax)
+    dibujar_campo(ax, largo, ancho)
 
     # 8. Configurar la escala de colores
     cmap = plt.get_cmap("turbo")
@@ -717,21 +725,24 @@ def grafica_sprints(df, ruta_png):
 
 
 
-def figuras_completas(ruta_csv, carpeta) -> list:
+def figuras_completas(ruta_csv, carpeta, campo=None) -> list:
     """Genera todas las figuras del jugador y devuelve sus rutas."""
 
     # 1. Crear la carpeta de salida
     carpeta = Path(carpeta)
     carpeta.mkdir(parents=True, exist_ok=True)
 
-    # 2. Cargar las posiciones del jugador
-    df = cargar_posiciones(ruta_csv)
+    # 2. Cargar las posiciones del jugador (y las medidas del campo)
+    df = cargar_posiciones(ruta_csv, campo)
+    campo = medidas_campo(df)
 
     # 3. Suavizar la trayectoria
     df = suavizar_trayectoria(df)
+    df.attrs["campo"] = campo
 
     # 4. Calcular distancia y velocidad
     df = distancia_y_velocidad(df)
+    df.attrs["campo"] = campo
 
     # 5. Definir las visualizaciones
     figuras = [
