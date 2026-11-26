@@ -7,7 +7,9 @@ Parte de los pesos de Roboflow (football-pitch-detection.pt, YOLOv8x-pose), que
 ya saben qué son los 32 puntos: no se empieza de cero (transfer learning, Tema 5).
 El mejor modelo se copia a models/puntos_<nombre>.pt.
 
-Si la GPU se queda sin memoria, baja --batch (8, 4...).
+Memoria: con la RTX 3050 Ti (4 GB), el congelado cabe con --batch 8 (3,1 GB), pero el
+completo pide 6,6 GB con 8: usar --batch 4 o 2. Si la columna GPU_mem pasa de ~3,8 GB,
+Windows usa la RAM del sistema y cada paso tarda 10 veces más.
 """
 import argparse
 import shutil
@@ -33,13 +35,16 @@ def main():
         fliplr=0.0,        # voltear la imagen cambiaría qué punto es cuál (izquierda <-> derecha)
         mosaic=0.0,        # el mosaico parte el campo en trozos: los puntos dejarían de tener sentido
         degrees=0.0, patience=8, workers=2,
-        project="runs/puntos", name=nombre, exist_ok=True, plots=True,
+        # ruta absoluta: con una relativa, Ultralytics la mete dentro de su propia
+        # carpeta de "runs" (que puede estar en otro sitio del disco)
+        project=str(Path("runs/puntos").resolve()), name=nombre, exist_ok=True, plots=True,
     )
-    mejor = Path("runs/puntos") / nombre / "weights" / "best.pt"
+    carpeta = Path(modelo.trainer.save_dir)           # donde lo ha guardado de verdad
+    mejor = carpeta / "weights" / "best.pt"
     destino = Path("models") / f"puntos_{nombre}.pt"
     shutil.copy(mejor, destino)
     print(f"\n✓ Modelo guardado en {destino}")
-    print("  Gráficas de entrenamiento en", Path("runs/puntos") / nombre)
+    print("  Gráficas de entrenamiento en", carpeta)
     print("  Siguiente: python tools/evaluar_homografia.py --modelos", destino)
     return 0
 
