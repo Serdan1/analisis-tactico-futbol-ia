@@ -59,6 +59,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--clips", nargs="*", help="nombres SNGS-XXX (por defecto, los de test descargados)")
     ap.add_argument("--n", type=int, help="solo los n primeros")
+    ap.add_argument("--saltar", type=int, default=0,
+                    help="saltarse los N primeros (p. ej. 10: los usados para elegir parámetros)")
     ap.add_argument("--solo_evaluar", action="store_true", help="no ejecutar main.py: solo evaluar lo que ya hay")
     ap.add_argument("--sin_reid", action="store_true", help="no evaluar el seguimiento de cada jugador (más rápido)")
     ap.add_argument("--max_jugadores", type=int, default=None, help="seguir como mucho N jugadores por clip")
@@ -69,6 +71,7 @@ def main():
         test = [s["name"] for s in json.load(open(ORIGEN / "sequences_info.json"))["test"]]
         a.clips = [c for c in test if (ORIGEN / c / "Labels-GameState.json").exists()]
     clips = a.clips
+    clips = clips[a.saltar:]
     clips = clips[:a.n] if a.n else clips
     if not clips:
         print(f"✗ No hay clips en {ORIGEN}. Ejecuta antes tools/descargar_soccernet.py"); return 1
@@ -97,11 +100,16 @@ def main():
     if filas:
         df = pd.DataFrame(filas)
         Path("outputs").mkdir(exist_ok=True)
-        df.to_csv("outputs/soccernet_resultados.csv", index=False)
+        nombre = "outputs/soccernet_resultados.csv" if not a.saltar else f"outputs/soccernet_resultados_desde{a.saltar}.csv"
+        df.to_csv(nombre, index=False)
         print("\n" + df[["clip", "error_mediana_m", "error_p95_m", "detectadas_pct", "cambios_numero",
                          "equipos_acierto_pct", "sentido_ok", "reid_bien_pct", "reid_otro_pct",
                          "tracker_bien_pct", "tracker_otro_pct"]].to_string(index=False))
-        print("\nGuardado en outputs/soccernet_resultados.csv (y outputs/<clip>/evaluacion.json)")
+        cols = ["error_mediana_m", "error_menos_1m_pct", "detectadas_pct", "equipos_acierto_pct",
+                "reid_bien_pct", "reid_otro_pct", "tracker_bien_pct", "tracker_otro_pct"]
+        print("\nMedia de los clips:\n" + df[cols].mean().round(1).to_string())
+        print(f"Sentido de ataque correcto en {int(df.sentido_ok.fillna(False).sum())} de {len(df)} clips")
+        print(f"\nGuardado en {nombre} (y outputs/<clip>/evaluacion.json)")
     return 0
 
 

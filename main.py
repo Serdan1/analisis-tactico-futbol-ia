@@ -51,7 +51,8 @@ def necesita(ruta: Path, fase: str):
 
 # --------------------------------------------------------------- fases
 def fase_video(a, salida):
-    from src.posiciones import procesar_video
+    from src.posiciones import MODELO_CAMPO, procesar_video
+    print(f"  Modelo de puntos del campo: {a.modelo_campo or MODELO_CAMPO}")
     todos, diag = procesar_video(a.video, device=a.device, progreso=not a.silencio,
                                  modelo_campo=a.modelo_campo, min_inliers=a.min_inliers)
     if todos.empty:

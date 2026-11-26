@@ -197,8 +197,8 @@ def elegir_jugador_con_clic(video, todos: pd.DataFrame, frame: int | None = None
 def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: float,
                    frame_inicio: int | None = None, n_galeria: int = 5, sep_galeria: int = 5,
                    vel_max_ms: float = 10.0, margen_m: float = 3.0, radio_conflicto_m: float = 2.0,
-                   fps: float = 25.0, margen_cambio: float = 0.15,
-                   max_hueco_s: float | None = None) -> pd.DataFrame:
+                   fps: float = 25.0, margen_cambio: float = 0.3,
+                   max_hueco_s: float | None = 0.5) -> pd.DataFrame:
     """Sigue a UN jugador fotograma a fotograma usando su galería de apariencia.
 
     - Galería: huellas de los primeros `n_galeria` fotogramas del track elegido,
@@ -213,8 +213,12 @@ def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: fl
       el cruce del 7 y el 21); con un compañero es casi nula y cambiar sería
       tirar una moneda: en SoccerNet era la causa de la mitad de los errores.
     - Si su número ha desaparecido: gana el candidato más parecido, si d <= tau.
-      Con `max_hueco_s`, si lleva perdido más de ese tiempo no se recupera
-      (modo prudente: menos posiciones, pero menos de otros jugadores).
+      Si lleva perdido más de `max_hueco_s` no se recupera (modo prudente):
+      en 10 clips de SoccerNet la posición de otro jugador baja del 37,6 % al
+      4,3 % con casi la misma cobertura correcta (36 %). Con un compañero de
+      la misma camiseta, esperar y no dar dato es mejor que dar el de otro.
+      En 2e57b9_0 el cruce del 7 y el 21 se sigue corrigiendo (fotograma 293).
+      Valores elegidos con SNGS-116..125: el test limpio son los demás clips.
     - Si ninguno baja de tau: "desconocido" en ese fotograma.
     - Al recuperarlo tras perder su número, NO valen los números que estuvieron
       en la imagen a la vez que él: son otras personas. Sin esta regla, en

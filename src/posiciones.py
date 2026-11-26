@@ -27,7 +27,12 @@ from src.fase2_homografia import (ANCHO_M, LARGO_M, VERTICES_CM, EstimadorHomogr
                                   dentro_del_campo, pies_de_cajas, pixel_a_metros)
 
 MODELO_JUGADORES = "models/football-player-detection.pt"
-MODELO_CAMPO = "models/football-pitch-detection.pt"
+MODELO_CAMPO_ROBOFLOW = "models/football-pitch-detection.pt"
+# Modelo de puntos reentrenado con SoccerNet (backbone congelado, #17): error
+# mediano de los jugadores 1,14 m frente a 7,80 m del de Roboflow en 10 clips
+# de SoccerNet. Si no está (no se sube a GitHub), se usa el de Roboflow.
+MODELO_CAMPO_REENTRENADO = "models/puntos_congelado.pt"
+MODELO_CAMPO = MODELO_CAMPO_REENTRENADO if Path(MODELO_CAMPO_REENTRENADO).exists() else MODELO_CAMPO_ROBOFLOW
 CLASES = {0: "balon", 1: "portero", 2: "jugador", 3: "arbitro"}
 
 

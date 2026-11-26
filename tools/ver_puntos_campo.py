@@ -67,10 +67,11 @@ def main():
     ap.add_argument("--frames", type=int, nargs="+", required=True)
     ap.add_argument("--gt", help="Labels-GameState.json de SoccerNet (opcional)")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--modelo", default=MODELO_CAMPO, help="pesos del modelo de puntos (por defecto, el reentrenado si existe)")
     a = ap.parse_args()
 
     from ultralytics import YOLO
-    modelo = YOLO(MODELO_CAMPO)
+    modelo = YOLO(a.modelo)
     verdad = None
     if a.gt:
         from src.evaluacion_soccernet import cargar_verdad

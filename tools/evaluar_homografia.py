@@ -22,7 +22,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.fase2_homografia import EstimadorHomografia, pixel_a_metros  # noqa: E402
-from src.posiciones import MODELO_CAMPO  # noqa: E402
+from src.posiciones import MODELO_CAMPO_ROBOFLOW  # noqa: E402
 
 
 def puntos_del_clip(video, ruta_modelo, cache, device):
@@ -83,7 +83,7 @@ def main():
     clips = a.clips or sorted(p.parent.name for p in Path("outputs").glob("SNGS-*/evaluacion_parejas.csv"))
     if not clips:
         print("✗ Primero: python tools/evaluar_soccernet.py --n 10"); return 1
-    modelos = [("roboflow", MODELO_CAMPO)] + [(Path(m).stem, m) for m in a.modelos]
+    modelos = [("roboflow", MODELO_CAMPO_ROBOFLOW)] + [(Path(m).stem, m) for m in a.modelos]
 
     filas, todas = [], {}
     for k, clip in enumerate(clips, 1):
