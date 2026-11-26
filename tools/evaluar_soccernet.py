@@ -57,14 +57,18 @@ def fila_resumen(clip, r):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--clips", nargs="*", help="nombres SNGS-XXX (por defecto, todos los descargados)")
+    ap.add_argument("--clips", nargs="*", help="nombres SNGS-XXX (por defecto, los de test descargados)")
     ap.add_argument("--n", type=int, help="solo los n primeros")
     ap.add_argument("--solo_evaluar", action="store_true", help="no ejecutar main.py: solo evaluar lo que ya hay")
     ap.add_argument("--sin_reid", action="store_true", help="no evaluar el seguimiento de cada jugador (más rápido)")
     ap.add_argument("--max_jugadores", type=int, default=None, help="seguir como mucho N jugadores por clip")
     a = ap.parse_args()
 
-    clips = a.clips or sorted(p.name for p in ORIGEN.glob("SNGS-*") if (p / "Labels-GameState.json").exists())
+    if not a.clips:
+        # solo los clips de TEST: los de train sirven para reentrenar el modelo de puntos (#17)
+        test = [s["name"] for s in json.load(open(ORIGEN / "sequences_info.json"))["test"]]
+        a.clips = [c for c in test if (ORIGEN / c / "Labels-GameState.json").exists()]
+    clips = a.clips
     clips = clips[:a.n] if a.n else clips
     if not clips:
         print(f"✗ No hay clips en {ORIGEN}. Ejecuta antes tools/descargar_soccernet.py"); return 1

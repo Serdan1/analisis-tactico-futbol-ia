@@ -41,7 +41,7 @@ def puntos_campo(modelo_campo, frame, device):
 
 def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ransac=True,
                    max_frames=None, paso=1, video_control=None, progreso=True, modo_demo=False,
-                   inicio=0):
+                   inicio=0, modelo_campo=None, min_inliers=4):
     """Recorre el vídeo y devuelve dos DataFrames: posiciones de todos y diagnóstico de H.
 
     modo_demo=True reproduce la demo de Roboflow (todos los puntos, sin RANSAC
@@ -53,14 +53,15 @@ def procesar_video(video, device="cuda", imgsz=1280, confianza_min=0.5, usar_ran
     from trackers import ByteTrackTracker   # aquí dentro: los tests no necesitan YOLO ni GPU
     from ultralytics import YOLO
     modelo_jug = YOLO(MODELO_JUGADORES)
-    modelo_campo = YOLO(MODELO_CAMPO)
+    modelo_campo = YOLO(modelo_campo or MODELO_CAMPO)
     info = sv.VideoInfo.from_video_path(str(video))
     fps = info.fps
     tracker = ByteTrackTracker(minimum_consecutive_frames=3, track_activation_threshold=0.25,
                                frame_rate=fps / paso)
     estimador = EstimadorHomografia(confianza_min=confianza_min, usar_ransac=usar_ransac,
                                     error_max_cm=error_max_cm,
-                                    max_frames_reutilizar=max(1, round(fps / paso)))
+                                    max_frames_reutilizar=max(1, round(fps / paso)),
+                                    min_inliers=min_inliers)
     filas, diag = [], []
 
     escritor = None

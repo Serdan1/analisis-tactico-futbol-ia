@@ -79,8 +79,12 @@ class EstimadorHomografia:
 
     def __init__(self, confianza_min: float = 0.5, usar_ransac: bool = True,
                  umbral_ransac_cm: float = 100.0, max_frames_reutilizar: int = 25,
-                 error_max_cm: float = 150.0):
+                 error_max_cm: float = 150.0, min_inliers: int = 4):
         self.confianza_min = confianza_min
+        # Con 4 puntos la homografía encaja siempre (8 ecuaciones, 8 incógnitas):
+        # el error sale 0 aunque los puntos estén mal. Exigir más inliers da
+        # redundancia para detectarlo (experimento de la #17).
+        self.min_inliers = min_inliers
         self.usar_ransac = usar_ransac
         self.umbral_ransac_cm = umbral_ransac_cm
         self.max_frames_reutilizar = max_frames_reutilizar
@@ -118,7 +122,7 @@ class EstimadorHomografia:
                 inliers[np.flatnonzero(usados)[m]] = True
                 proy = cv2.perspectiveTransform(src[m].reshape(-1, 1, 2), H).reshape(-1, 2)
                 error = float(np.linalg.norm(proy - dst[m], axis=1).mean())
-                if not np.isfinite(error) or error > self.error_max_cm:
+                if not np.isfinite(error) or error > self.error_max_cm or int(m.sum()) < self.min_inliers:
                     H = None
 
         if H is not None:

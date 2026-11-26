@@ -52,7 +52,8 @@ def necesita(ruta: Path, fase: str):
 # --------------------------------------------------------------- fases
 def fase_video(a, salida):
     from src.posiciones import procesar_video
-    todos, diag = procesar_video(a.video, device=a.device, progreso=not a.silencio)
+    todos, diag = procesar_video(a.video, device=a.device, progreso=not a.silencio,
+                                 modelo_campo=a.modelo_campo, min_inliers=a.min_inliers)
     if todos.empty:
         raise ErrorPipeline("No se ha detectado ningún jugador en el vídeo.")
     todos.to_csv(salida / "posiciones_todos.csv", index=False)
@@ -216,6 +217,8 @@ def main(argv=None):
     lado = ap.add_mutually_exclusive_group()
     lado.add_argument("--ataca_izquierda", action="store_true", help="forzar: su equipo ataca hacia la izquierda de la cámara")
     lado.add_argument("--ataca_derecha", action="store_true", help="forzar: su equipo ataca hacia la derecha de la cámara")
+    ap.add_argument("--modelo_campo", default=None, help="pesos del modelo de puntos del campo (por defecto, el de Roboflow)")
+    ap.add_argument("--min_inliers", type=int, default=4, help="inliers mínimos para aceptar una homografía")
     ap.add_argument("--tau", type=float, default=TAU_POR_DEFECTO, help="umbral de re-identificación")
     ap.add_argument("--device", default=None, help="cuda o cpu (por defecto, cuda si hay GPU)")
     ap.add_argument("--silencio", action="store_true", help="menos mensajes de progreso")
