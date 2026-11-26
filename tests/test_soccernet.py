@@ -17,10 +17,12 @@ def _clip(tmp_path, n=60):
             anns.append({"image_id": iid, "track_id": gid, "category_id": 1,
                          "attributes": {"role": "player", "team": lado, "jersey": str(gid)},
                          "bbox_image": {"x": x, "y": 400, "w": 30, "h": 70},
-                         "bbox_pitch": {"x_bottom_middle": -20 + gid * 10 + 0.1 * f, "y_bottom_middle": 5.0}})
-            tid = gid if f < 30 else 3 - gid          # el tracker intercambia los números en el 30
+                         "bbox_pitch": {"x_bottom_middle": -20 + gid * 1.0 + 0.1 * f, "y_bottom_middle": 5.0}})
+            # el tracker intercambia los números en el 30, con los dos jugadores a 1 m
+            # (los intercambios de ByteTrack ocurren cuando se tapan, no a distancia)
+            tid = gid if f < 30 else 3 - gid
             filas.append((f, f / 25, tid, "jugador", x, 400, x + 30, 470,
-                          52.5 - 20 + gid * 10 + 0.1 * f + 0.2, 34 - 5.0, 1, gid))
+                          52.5 - 20 + gid * 1.0 + 0.1 * f + 0.2, 34 - 5.0, 1, gid))
     json.dump({"images": imgs, "annotations": anns}, open(tmp_path / "gt.json", "w"))
     todos = pd.DataFrame(filas, columns=["frame", "t_s", "track_id", "clase", "x1", "y1", "x2", "y2",
                                          "x_m", "y_m", "valido", "real"])

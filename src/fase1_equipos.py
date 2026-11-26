@@ -41,17 +41,21 @@ def seleccionar_partes(embs: np.ndarray, partes: str = "ambos") -> np.ndarray:
     return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-9)
 
 
-def clase_de_track(todos: pd.DataFrame) -> pd.Series:
+def clase_de_track(todos: pd.DataFrame, min_portero: int = 25) -> pd.Series:
     """Clase mayoritaria del detector en cada track (jugador / portero / arbitro).
 
-    Un track es portero si al menos el 30 % de sus detecciones lo son: el detector
-    a veces confunde al portero con un jugador cuando se ve de lejos.
+    Un track es portero si al menos el 30 % de sus detecciones lo son (el
+    detector a veces confunde al portero con un jugador cuando se ve de lejos)
+    y son al menos `min_portero` (1 s): en SNGS-116 un track de 3 detecciones,
+    2 de ellas "portero", decidía el sentido de ataque (y mal).
     """
     def decidir(s):
-        frac = s.value_counts(normalize=True)
-        if frac.get("portero", 0) >= 0.3:
+        cuenta = s.value_counts()
+        frac = cuenta / len(s)
+        if frac.get("portero", 0) >= 0.3 and cuenta.get("portero", 0) >= min_portero:
             return "portero"
-        return frac.idxmax()
+        resto = cuenta.drop("portero", errors="ignore")
+        return resto.idxmax() if len(resto) else "jugador"
     return todos.groupby("track_id").clase.agg(decidir)
 
 

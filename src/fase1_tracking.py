@@ -197,7 +197,8 @@ def elegir_jugador_con_clic(video, todos: pd.DataFrame, frame: int | None = None
 def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: float,
                    frame_inicio: int | None = None, n_galeria: int = 5, sep_galeria: int = 5,
                    vel_max_ms: float = 10.0, margen_m: float = 3.0, radio_conflicto_m: float = 2.0,
-                   fps: float = 25.0) -> pd.DataFrame:
+                   fps: float = 25.0, margen_cambio: float = 0.15,
+                   max_hueco_s: float | None = None) -> pd.DataFrame:
     """Sigue a UN jugador fotograma a fotograma usando su galería de apariencia.
 
     - Galería: huellas de los primeros `n_galeria` fotogramas del track elegido,
@@ -206,9 +207,20 @@ def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: fl
       última posición conocida (nadie corre a más de ~10 m/s).
     - Si su número sigue ahí, sin nadie a menos de `radio_conflicto_m` y con
       d <= tau: se mantiene (confiamos en el tracker).
-    - Si hay otro jugador pegado (posible cambio de número) o su número ha
-      desaparecido: gana el candidato más parecido a la galería, si d <= tau.
+    - Si hay otro jugador pegado (posible cambio de número): solo se cambia de
+      número si el otro es CLARAMENTE más parecido (por `margen_cambio`). Con
+      un rival (otra camiseta) la diferencia es grande (0,64 frente a 0,93 en
+      el cruce del 7 y el 21); con un compañero es casi nula y cambiar sería
+      tirar una moneda: en SoccerNet era la causa de la mitad de los errores.
+    - Si su número ha desaparecido: gana el candidato más parecido, si d <= tau.
+      Con `max_hueco_s`, si lleva perdido más de ese tiempo no se recupera
+      (modo prudente: menos posiciones, pero menos de otros jugadores).
     - Si ninguno baja de tau: "desconocido" en ese fotograma.
+    - Al recuperarlo tras perder su número, NO valen los números que estuvieron
+      en la imagen a la vez que él: son otras personas. Sin esta regla, en
+      SoccerNet (cámara cerrada, números que se pierden a menudo) el seguidor
+      cogía a un compañero con la misma camiseta en el mismo fotograma en que
+      el jugador perdía su número, antes de que el tracker le diera uno nuevo.
 
     Devuelve una fila por fotograma: frame, t_s, track_id seguido (o -1),
     x_m, y_m, valido, distancia a la galería, si hubo cambio de número y si
@@ -227,6 +239,7 @@ def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: fl
         return np.linalg.norm(embs[ix][:, None, :] - galeria[None, :, :], axis=2).min(axis=1)
 
     actual, ultima_pos, ultimo_frame = track_id, None, None
+    a_la_vez = set()          # números que han coincidido en la imagen con el jugador
     filas = []
     for f, grupo in todos[todos.frame >= propio.frame.min()].groupby("frame"):
         t_s = grupo.t_s.iloc[0]
@@ -244,16 +257,24 @@ def seguir_jugador(todos: pd.DataFrame, embs: np.ndarray, track_id: int, tau: fl
                 cerca = np.hypot(cand.x_m - cand.x_m.iloc[m], cand.y_m - cand.y_m.iloc[m]).to_numpy()
                 grupo_conf = np.flatnonzero(cerca <= radio_conflicto_m)   # incluye al propio
                 conflicto = len(grupo_conf) > 1
-                k = grupo_conf[np.argmin(d[grupo_conf])] if conflicto else m
+                k = m
+                if conflicto:
+                    mejor = grupo_conf[np.argmin(d[grupo_conf])]
+                    if d[mejor] < d[m] - margen_cambio:
+                        k = mejor
+            elif max_hueco_s is not None and ultimo_frame is not None and (f - ultimo_frame) > max_hueco_s * fps:
+                k = None          # perdido demasiado tiempo: mejor sin dato que el de otro
             else:
-                k = int(np.argmin(d))
-            if d[k] <= tau:
+                libres = np.flatnonzero(~np.isin(ids, list(a_la_vez)))
+                k = int(libres[np.argmin(d[libres])]) if len(libres) else None
+            if k is not None and d[k] <= tau:
                 elegido, d_elegido = cand.iloc[k], float(d[k])
                 cambio = int(elegido.track_id) != actual
                 actual = int(elegido.track_id)
-            else:
+            elif k is not None:
                 d_elegido = float(d[k])
         if elegido is not None:
+            a_la_vez.update(int(t) for t in grupo.track_id if int(t) != actual)
             ultima_pos, ultimo_frame = (elegido.x_m, elegido.y_m), f
             filas.append(dict(frame=f, t_s=t_s, track_id=actual, x_m=elegido.x_m, y_m=elegido.y_m,
                               valido=1, distancia=round(d_elegido, 4), cambio_id=int(cambio),
