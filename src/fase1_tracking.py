@@ -130,39 +130,65 @@ def calcular_embeddings(video, todos: pd.DataFrame, extractor: ExtractorAparienc
 
 # --------------------------------------------------------------- 2. elegir al jugador
 def elegir_jugador_con_clic(video, todos: pd.DataFrame, frame: int | None = None) -> int:
-    """Abre una ventana con el fotograma y devuelve el track_id del jugador en el que se hace clic.
+    """Abre una ventana con el fotograma y devuelve el track_id del jugador elegido.
 
-    Clic izquierdo sobre el jugador y después cualquier tecla. Esc cancela.
+    Clic sobre el jugador (se marca en verde; se puede cambiar con otro clic),
+    después Enter o espacio para confirmar. Esc o cerrar la ventana cancela.
+    Por defecto se usa, de los primeros 2 s, el fotograma con más jugadores.
     """
-    frame = int(todos.frame.min() + 2) if frame is None else frame
+    if frame is None:
+        inicio = todos[todos.frame < todos.frame.min() + 50]
+        frame = int(inicio.groupby("frame").size().idxmax())
     cap = cv2.VideoCapture(str(video))
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame)
-    ok, img = cap.read(); cap.release()
+    ok, base = cap.read(); cap.release()
     if not ok:
         raise ValueError(f"No se pudo leer el fotograma {frame}")
-    filas = todos[todos.frame == frame]
+    filas = todos[todos.frame == frame].reset_index(drop=True)
     for _, r in filas.iterrows():
-        cv2.rectangle(img, (r.x1, r.y1), (r.x2, r.y2), (255, 255, 255), 2)
-        cv2.putText(img, str(r.track_id), (r.x1, r.y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.rectangle(base, (int(r.x1), int(r.y1)), (int(r.x2), int(r.y2)), (255, 255, 255), 2)
+        cv2.putText(base, str(r.track_id), (int(r.x1), int(r.y1) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    cv2.rectangle(base, (0, 0), (base.shape[1], 50), (0, 0, 0), -1)
+    cv2.putText(base, f"Fotograma {frame}: clic sobre el jugador, luego ENTER para confirmar (ESC cancela)",
+                (15, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+    img = base.copy()
     elegido = {}
+    titulo = "Elegir jugador"
 
     def clic(evento, x, y, *_):
-        if evento == cv2.EVENT_LBUTTONDOWN:
-            dentro = filas[(filas.x1 <= x) & (x <= filas.x2) & (filas.y1 <= y) & (y <= filas.y2)]
-            if len(dentro):
-                r = dentro.iloc[0]
-                elegido["id"] = int(r.track_id)
-                cv2.rectangle(img, (r.x1, r.y1), (r.x2, r.y2), (0, 255, 0), 3)
-                cv2.imshow(titulo, img)
+        nonlocal img
+        if evento != cv2.EVENT_LBUTTONDOWN or filas.empty:
+            return
+        # la caja que contiene el clic o, si no, la más cercana (los jugadores son pequeños)
+        cx, cy = (filas.x1 + filas.x2) / 2, (filas.y1 + filas.y2) / 2
+        dentro = (filas.x1 <= x) & (x <= filas.x2) & (filas.y1 <= y) & (y <= filas.y2)
+        dist = np.hypot(cx - x, cy - y)
+        k = int(dist[dentro].idxmin()) if dentro.any() else int(dist.idxmin())
+        if not dentro.any() and dist[k] > 60:
+            return
+        r = filas.loc[k]
+        elegido["id"] = int(r.track_id)
+        img = base.copy()
+        cv2.rectangle(img, (int(r.x1), int(r.y1)), (int(r.x2), int(r.y2)), (0, 255, 0), 4)
+        cv2.putText(img, f"Elegido: {r.track_id} (ENTER para confirmar)", (int(r.x1), int(r.y2) + 28),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-    titulo = "Haz clic sobre el jugador y pulsa una tecla"
     cv2.namedWindow(titulo, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(titulo, 1280, 720)
+    cv2.setWindowProperty(titulo, cv2.WND_PROP_TOPMOST, 1)    # delante de VS Code
     cv2.setMouseCallback(titulo, clic)
-    cv2.imshow(titulo, img)
-    tecla = cv2.waitKey(0)
+    print("  Se ha abierto una ventana: haz clic sobre el jugador y pulsa ENTER.", flush=True)
+    confirmado = False
+    while True:
+        cv2.imshow(titulo, img)
+        tecla = cv2.waitKey(30) & 0xFF
+        if tecla in (13, 32) and "id" in elegido:          # Enter o espacio
+            confirmado = True
+            break
+        if tecla == 27 or cv2.getWindowProperty(titulo, cv2.WND_PROP_VISIBLE) < 1:   # Esc o cerrar
+            break
     cv2.destroyAllWindows()
-    if tecla == 27 or "id" not in elegido:
+    if not confirmado:
         raise ValueError("No se ha elegido ningún jugador")
     return elegido["id"]
 

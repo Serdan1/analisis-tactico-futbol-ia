@@ -108,8 +108,13 @@ def fase_jugador(a, salida):
     if track_id is None:
         if not a.clic:
             raise ErrorPipeline("Di a qué jugador seguir: --track_id N o --clic.")
-        track_id = elegir_jugador_con_clic(a.video, todos, a.frame_inicio)
+        try:
+            track_id = elegir_jugador_con_clic(a.video, todos, a.frame_inicio)
+        except ValueError:
+            raise ErrorPipeline("No has elegido ningún jugador. Lo anterior está guardado: repite solo este paso con\n"
+                                f"  python main.py --video {a.video} --clic --desde jugador")
     propio = todos[(todos.track_id == track_id) & (todos.frame >= (a.frame_inicio or 0))]
+    print(f"  Jugador elegido: {track_id}")
     if propio.empty:
         primeros = todos[todos.frame == todos.frame.min()].track_id.tolist()
         raise ErrorPipeline(f"El jugador {track_id} no aparece en el clip. "
