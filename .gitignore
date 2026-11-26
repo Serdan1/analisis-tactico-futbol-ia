@@ -37,3 +37,6 @@ runs/
 Thumbs.db
 .vscode/
 .idea/
+
+# Guía de defensa: lleva fotogramas de SoccerNet (acuerdo de uso), solo en local
+docs/Guia_defensa_Dani.pdf
