@@ -27,3 +27,4 @@ pytest
 
 # Demo (opcional)
 # gradio
+huggingface_hub     # descargar SoccerNet GSR (tools/descargar_soccernet.py)
