@@ -14,23 +14,23 @@ Posiciones en **metros** sobre un campo de **105 × 68**:
 
 En `posiciones.csv` el campo se gira si el equipo del jugador ataca hacia la izquierda de la cámara (`x → 105 − x`, `y → 68 − y`), para que **siempre ataque hacia x = 105**. El sentido de ataque se calcula automáticamente en la tarea #10 (cada equipo defiende la portería donde está su portero) y se guarda en `outputs/<clip>/equipos.json`.
 
-El nombre de cada equipo lo pone la #10 según el color de la camiseta: `claro` u `oscuro`.
+El nombre de cada equipo lo pone la #10 según el color real de la camiseta: `blanco`, `azul`, `verde`, `rojo`… (si los dos equipos salen del mismo color, `azul claro` / `azul oscuro`).
 
 | Columna | Tipo | Significado |
 |---|---|---|
 | `frame` | entero | Número de fotograma del clip (empieza en 0) |
 | `t_s` | decimal | Tiempo en segundos (`frame / fps`) |
 | `track_id` | entero | Identificador del jugador que da el tracker |
-| `equipo` | texto | `claro` u `oscuro` (color de la camiseta, tarea #10) |
+| `equipo` | texto | color de la camiseta: `blanco`, `azul`, `verde`… (tarea #10) |
 | `x_m` | decimal | Posición x en metros. Vacío si en ese frame no se ve |
 | `y_m` | decimal | Posición y en metros. Vacío si en ese frame no se ve |
 | `valido` | 0 / 1 | 1 si la posición es fiable (jugador detectado y homografía correcta) |
 
 ```csv
 frame,t_s,track_id,equipo,x_m,y_m,valido
-0,0.00,9,claro,71.4,30.2,1
-1,0.04,9,claro,71.6,30.3,1
-2,0.08,9,claro,,,0
+0,0.00,9,blanco,71.4,30.2,1
+1,0.04,9,blanco,71.6,30.3,1
+2,0.08,9,blanco,,,0
 ```
 
 ## `metricas.json` (Fase 2 → Fase 3)

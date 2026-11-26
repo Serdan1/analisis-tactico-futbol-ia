@@ -222,12 +222,31 @@ def equipo_de_un_jugador(out: pd.DataFrame, frames_y_tracks: pd.DataFrame) -> st
 
 
 # --------------------------------------------------------------- todo junto (main.py)
-def brillo_torso(video, filas: pd.DataFrame) -> np.ndarray:
-    """Brillo medio (canal V de HSV) del torso de cada fila: sirve para llamar
-    "claro" al grupo de camiseta más clara y "oscuro" al otro."""
+def nombre_de_color(h: float, s: float, v: float) -> str:
+    """Nombre de un color a partir de su H, S, V en la escala de OpenCV (H 0-180)."""
+    if v < 70:
+        return "negro"
+    if s < 45:
+        return "blanco" if v >= 170 else "gris"
+    for limite, nombre in [(8, "rojo"), (20, "naranja"), (33, "amarillo"), (85, "verde"),
+                           (130, "azul"), (150, "morado"), (170, "rosa")]:
+        if h < limite:
+            return nombre
+    return "rojo"
+
+
+def colores_de_grupos(video, filas: pd.DataFrame) -> dict:
+    """{grupo: nombre del color de la camiseta} a partir de los recortes propuestos.
+
+    Se usa la mediana HSV del centro del pecho (sin brazos ni césped). Al
+    principio se usaba el brillo ("claro" / "oscuro"), pero en 08fd33_0 el
+    verde lima salía más "brillante" que el blanco: V de HSV es max(R, G, B),
+    no la claridad. Si los dos grupos salen del mismo color se distinguen
+    por la claridad L de Lab ("azul claro" / "azul oscuro").
+    """
     import cv2
     cap = cv2.VideoCapture(str(video))
-    out = np.full(len(filas), np.nan)
+    pixeles = {}
     actual, f = -1, None
     for i in np.argsort(filas.frame.to_numpy(), kind="stable"):   # leer hacia delante: sin saltos lentos
         r = filas.iloc[i]
@@ -237,12 +256,21 @@ def brillo_torso(video, filas: pd.DataFrame) -> np.ndarray:
                 break
         if f is None or actual != r.frame:
             continue
-        h = int(r.y2) - int(r.y1)
-        zona = f[int(r.y1) + int(.15 * h):int(r.y1) + int(.55 * h), int(r.x1):int(r.x2)]
+        h, w = int(r.y2) - int(r.y1), int(r.x2) - int(r.x1)
+        zona = f[int(r.y1) + int(.2 * h):int(r.y1) + int(.5 * h), int(r.x1) + int(.25 * w):int(r.x2) - int(.25 * w)]
         if zona.size:
-            out[i] = cv2.cvtColor(zona, cv2.COLOR_BGR2HSV)[..., 2].mean()
+            pixeles.setdefault(int(r.grupo), []).append(zona.reshape(-1, 3))
     cap.release()
-    return out
+    hsv, luz = {}, {}
+    for g, lista in pixeles.items():
+        px = np.vstack(lista)[None]
+        hsv[g] = np.median(cv2.cvtColor(px, cv2.COLOR_BGR2HSV)[0], axis=0)
+        luz[g] = float(np.median(cv2.cvtColor(px, cv2.COLOR_BGR2LAB)[0][:, 0]))
+    nombres = {g: nombre_de_color(*hsv[g]) for g in hsv}
+    if len(set(nombres.values())) < len(nombres):
+        claro = max(luz, key=luz.get)
+        nombres = {g: f"{n} {'claro' if g == claro else 'oscuro'}" for g, n in nombres.items()}
+    return nombres
 
 
 def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max: int | None = None,
@@ -250,7 +278,7 @@ def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max:
                         ventana: int = 25):
     """Versión sin revisión humana del notebook 10 (para main.py).
 
-    K-Means propone 20 recortes por grupo, se nombran por el brillo de la
+    K-Means propone 20 recortes por grupo, se nombran por el color de la
     camiseta, se entrena el clasificador (por defecto el mejor en validación
     en 2e57b9_0: KNN k=5 con ResNet + color) y se asigna equipo a todo.
     frame_max por defecto: el primer tercio del clip.
@@ -261,9 +289,7 @@ def equipos_automaticos(video, todos: pd.DataFrame, embs: np.ndarray, frame_max:
     prop = proponer_etiquetas(todos, embs, n_por_equipo, frame_max=frame_max)
     if prop.grupo.nunique() < 2:
         raise ValueError("No se han encontrado dos equipos distintos en el clip")
-    brillo = pd.Series(brillo_torso(video, prop)).groupby(prop.grupo).mean()
-    nombres = {int(brillo.idxmax()): "claro", int(brillo.idxmin()): "oscuro"}
-    prop["equipo"] = prop.grupo.map(nombres)
+    prop["equipo"] = prop.grupo.map(colores_de_grupos(video, prop))
     kw = {"k": 5} if metodo == "knn" else {}
     clf = ClasificadorEquipos(metodo, partes, **kw).fit(embs[prop.indice], prop.equipo)
     out = asignar_equipos(todos, embs, clf, ventana=ventana)

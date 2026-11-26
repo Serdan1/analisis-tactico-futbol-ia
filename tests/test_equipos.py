@@ -2,8 +2,8 @@
 import numpy as np
 import pandas as pd
 
-from src.fase1_equipos import (ClasificadorEquipos, asignar_equipos, proponer_etiquetas,
-                               sentido_de_ataque)
+from src.fase1_equipos import (ClasificadorEquipos, asignar_equipos, nombre_de_color,
+                               proponer_etiquetas, sentido_de_ataque)
 
 
 def _partido_sintetico(semilla=0, n_frames=120):
@@ -64,3 +64,13 @@ def test_logreg_tambien_funciona():
     clf = ClasificadorEquipos("logreg", "ambos").fit(embs[prop.indice], y)
     jug = (todos.clase == "jugador").to_numpy()
     assert (clf.predict(embs[jug]) == verdad[jug]).mean() > 0.97
+
+
+def test_nombres_de_color():
+    # valores HSV (OpenCV) medidos en los dos clips de prueba
+    assert nombre_de_color(34, 13, 245) == "blanco"    # 2e57b9_0, camiseta blanca
+    assert nombre_de_color(94, 51, 114) == "azul"      # 2e57b9_0, azul marino
+    assert nombre_de_color(99, 28, 223) == "blanco"    # 08fd33_0, blanco a la sombra
+    assert nombre_de_color(53, 108, 242) == "verde"    # 08fd33_0, verde lima (antes salía "claro")
+    assert nombre_de_color(0, 0, 30) == "negro"
+    assert nombre_de_color(175, 200, 200) == "rojo"

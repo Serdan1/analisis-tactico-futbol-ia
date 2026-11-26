@@ -1,6 +1,6 @@
 {
   "clip": "clip_ejemplo.mp4",
-  "jugador": { "id": 9, "equipo": "claro", "rol": "delantero" },
+  "jugador": { "id": 9, "equipo": "blanco", "rol": "delantero" },
   "tiempo_visible_s": 252,
   "frames_validos_pct": 87.4,
   "distancia_m": 512,
